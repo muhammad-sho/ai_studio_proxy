@@ -698,7 +698,7 @@
     </div>
     <div class="section-box">
       <h2 class="section-title">Active Client Keys</h2>
-      <p class="section-desc">Full key values are shown exactly once, right after they are generated. Store them somewhere safe — they cannot be retrieved again.</p>
+      <p class="section-desc">Keys stay saved on the server so every row keeps a working Copy button — but anyone with dashboard access can retrieve them, so protect this admin account.</p>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -1083,7 +1083,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     try {
       await api('/api/admin/cooldowns/clear', { method: 'POST' });
       load();
-    } catch {}
+    } catch (err) { console.error(err); }
   }
 
   function syncModelFilter(models) {
@@ -1132,7 +1132,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
       document.getElementById('logMeta').textContent = `${d.total} log entr${d.total === 1 ? 'y' : 'ies'}`;
       document.getElementById('logsNewerBtn').style.display = logsOffset > 0 ? '' : 'none';
       document.getElementById('logsOlderBtn').style.display = logsOffset + LOG_PAGE_SIZE < d.total ? '' : 'none';
-    } catch {}
+    } catch (err) { console.error(err); }
   }
 
   function logsPage(delta) {
@@ -1196,7 +1196,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
         </dl>
         ${timelineHtml(l.events)}`;
       document.getElementById('logModal').style.display = 'flex';
-    } catch {}
+    } catch (err) { console.error(err); }
   }
 
   function logDebugText(l) {
@@ -1302,8 +1302,16 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     } catch (err) { alert(err.message); }
   };
 
-  async function deleteClientKey(id) { if (confirm('Delete this client key?')) { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); } }
-  async function deleteKey(id) { if (confirm('Delete this Gemini API key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
+  async function deleteClientKey(id) {
+    if (!confirm('Delete this client key?')) return;
+    try { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); }
+    catch (err) { alert(err.message); }
+  }
+  async function deleteKey(id) {
+    if (!confirm('Delete this Gemini API key?')) return;
+    try { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); }
+    catch (err) { alert(err.message); }
+  }
   async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
 
   initActiveTab();
@@ -1313,7 +1321,9 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   document.querySelectorAll('.howto-host').forEach(el => { el.textContent = proxyHost; });
 
   load();
-  setInterval(load, 5000);
+  const POLL_MS = 5000;
+  setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLogModal(); });
 </script>

@@ -287,6 +287,7 @@ dashboard setup. Add these to the `environment:` section of
 | --- | --- | --- |
 | `PORT` | `9009` | Port the proxy listens on |
 | `DB_PATH` | `/data/ai-studio-proxy.db` | SQLite database location inside the container |
+| `DEBUG` | unset | Set to `1` for extra per-attempt debug logging |
 | `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
 | `KEY_LOOP_DEADLINE_MS` | same as `REQUEST_TIMEOUT_MS` | Total time budget for trying keys one-by-one on a failed request before giving up |
@@ -297,7 +298,7 @@ dashboard setup. Add these to the `environment:` section of
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
 | `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |
 
-Logging is always at full debug verbosity — every request, upstream call, key rotation decision, auth event and admin action is written to stdout with a timestamp. Secrets (API keys, passwords, tokens) are always masked.
+Logging: every request, upstream call, key rotation decision, auth event and admin action is written to stdout with a timestamp. Secrets (API keys, passwords, tokens) are always masked. Set `DEBUG=1` for extra per-attempt trace logging.
 
 See `.env.example` for a starting point.
 
@@ -345,8 +346,10 @@ API requests require a valid client key sent as:
 x-proxy-api-key: YOUR-CLIENT-KEY
 ```
 
-Client keys and passwords are stored hashed; sign-in is protected by session
-cookies, CSRF tokens, and login rate limiting.
+Passwords are stored hashed (scrypt); client API keys are stored in the
+database so the dashboard can redisplay them via their Copy button — protect
+the database like you would the keys themselves. Sign-in is protected by
+session cookies, CSRF tokens, and login rate limiting.
 
 Google Gemini API keys are stored in the local SQLite database in plaintext
 because the proxy must recover them to authenticate upstream. Protect the

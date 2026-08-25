@@ -2,6 +2,7 @@ const http = require("node:http");
 const https = require("node:https");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const zlib = require("node:zlib");
 const { DatabaseSync } = require("node:sqlite");
 
 const PORT = Number(process.env.PORT || 9009);
@@ -20,13 +21,16 @@ const sessions = new Map();
 const loginAttempts = new Map();
 const loginFailures = [];
 const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || "");
+const DEBUG = /^(1|true|yes)$/i.test(process.env.DEBUG || "");
+const COOKIE_SESSION = "ai_studio_proxy_dashboard";
+const COOKIE_CSRF = "ai_studio_proxy_csrf";
 
 function log(level, category, message) {
   const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${category}] ${message}`;
   if (level === "warn" || level === "error") console.error(line);
   else console.log(line);
 }
-const dbg = (category, message) => log("debug", category, message);
+const dbg = (category, message) => { if (DEBUG) log("debug", category, message); };
 const maskKey = (key) => `${String(key || "").slice(0, 6)}...`;
 
 const db = new DatabaseSync(DB_PATH);
@@ -99,13 +103,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);
 `);
 
-try { db.exec("ALTER TABLE model_key_state ADD COLUMN cooldown_reason TEXT NOT NULL DEFAULT ''"); } catch {}
-try { db.exec("ALTER TABLE client_keys ADD COLUMN key_text TEXT"); } catch {}
-try { db.exec("ALTER TABLE api_keys DROP COLUMN enabled"); } catch {}
-try { db.exec("ALTER TABLE client_keys DROP COLUMN enabled"); } catch {}
-try { db.exec("ALTER TABLE request_logs ADD COLUMN trace_id TEXT"); } catch {}
-try { db.exec("ALTER TABLE request_logs ADD COLUMN events TEXT"); } catch {}
-
 function json(response, status, value) {
   if (response.writableEnded || response.destroyed) return;
   const body = JSON.stringify(value);
@@ -136,7 +133,7 @@ function readBody(request) {
       if (bytes > MAX_BODY_BYTES) {
         failed = true;
         chunks.length = 0;
-        request.destroy();
+        request.resume();
         reject(Object.assign(new Error("Request body is too large"), { status: 413 }));
         return;
       }
@@ -151,35 +148,40 @@ function hashValue(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+function constantTimeEqual(left, right) {
+  return crypto.timingSafeEqual(Buffer.from(hashValue(String(left)), "hex"), Buffer.from(hashValue(String(right)), "hex"));
+}
+
+function cookieValue(request, name) {
+  return (request.headers.cookie || "").match(new RegExp(`(?:^|; )${name}=([^;]+)`))?.[1] || null;
+}
+
+function sessionFromRequest(request) {
+  const token = cookieValue(request, COOKIE_SESSION);
+  const session = token ? sessions.get(token) : null;
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) { sessions.delete(token); return null; }
+  return session;
+}
+
+function dashboardSessionValid(request) {
+  return Boolean(sessionFromRequest(request));
+}
+
+function csrfValid(request) {
+  const session = sessionFromRequest(request);
+  const cookieToken = cookieValue(request, COOKIE_CSRF) || "";
+  const headerToken = request.headers["x-csrf-token"] || "";
+  return Boolean(session && cookieToken && headerToken && constantTimeEqual(cookieToken, headerToken) && constantTimeEqual(session.csrfToken, headerToken));
+}
+
 function localKeyIsValid(request) {
   const query = new URL(request.url, "http://localhost").searchParams;
   const supplied = request.headers["x-proxy-api-key"] ||
     request.headers["x-goog-api-key"] ||
     query.get("key") || "";
   if (!supplied) return false;
-  const hash = hashValue(supplied);
-  return Boolean(db.prepare("SELECT id FROM client_keys WHERE key_hash = ?").get(hash));
-}
-
-function dashboardSessionValid(request) {
-  const token = (request.headers.cookie || "").match(/(?:^|; )ai_studio_proxy_dashboard=([^;]+)/)?.[1];
-  const session = token ? sessions.get(token) : null;
-  if (!session) return false;
-  if (session.expiresAt <= Date.now()) { sessions.delete(token); return false; }
-  return true;
-}
-
-function sessionFromRequest(request) {
-  const token = (request.headers.cookie || "").match(/(?:^|; )ai_studio_proxy_dashboard=([^;]+)/)?.[1];
-  const session = token ? sessions.get(token) : null;
-  return session && session.expiresAt > Date.now() ? session : null;
-}
-
-function csrfValid(request) {
-  const session = sessionFromRequest(request);
-  const cookieToken = (request.headers.cookie || "").match(/(?:^|; )ai_studio_proxy_csrf=([^;]+)/)?.[1] || "";
-  const headerToken = request.headers["x-csrf-token"] || "";
-  return Boolean(session && cookieToken && headerToken && cookieToken === headerToken && session.csrfToken === headerToken);
+  return Boolean(db.prepare("SELECT id FROM client_keys WHERE key_hash = ?").get(hashValue(supplied)));
 }
 
 function clientAddress(request) {
@@ -256,10 +258,11 @@ async function passwordValid(password, user) {
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
-function createClientKey(label = "Default client key") {
+function createClientKey(label) {
   const value = crypto.randomBytes(32).toString("base64url");
   db.prepare("INSERT INTO client_keys (label,key_hash,key_prefix,key_text,created_at) VALUES (?,?,?,?,?)")
     .run(label, hashValue(value), `${value.slice(0, 8)}...`, value, Date.now());
+  invalidateSecretMaskCache();
   return value;
 }
 
@@ -313,8 +316,9 @@ function usageStats() {
       AND r.status >= 200 AND r.status < 300 AND r.created_at >= ?
     LEFT JOIN model_key_state s ON s.model = m.name AND s.key_id = k.id
     GROUP BY m.name, k.id, k.label, k.api_key, s.cooldown_until, s.cooldown_reason
+    HAVING today > 0 OR cooldown_until > ?
     ORDER BY m.name, k.id
-  `).all(start).filter((row) => row.today > 0 || row.cooldown_until > Date.now());
+  `).all(start, Date.now());
 }
 
 function recordRequest(model, keyId, status) {
@@ -322,10 +326,16 @@ function recordRequest(model, keyId, status) {
   db.prepare("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, keyId, status, Date.now());
 }
 
+let secretMaskCache = null;
+function invalidateSecretMaskCache() { secretMaskCache = null; }
 function maskSecrets(text) {
+  if (!secretMaskCache) {
+    secretMaskCache = [];
+    for (const row of db.prepare("SELECT api_key FROM api_keys").all()) secretMaskCache.push([row.api_key, maskKey(row.api_key)]);
+    for (const row of db.prepare("SELECT key_text FROM client_keys WHERE key_text IS NOT NULL").all()) secretMaskCache.push([row.key_text, maskKey(row.key_text)]);
+  }
   let out = String(text);
-  for (const row of db.prepare("SELECT api_key FROM api_keys").all()) out = out.split(row.api_key).join(maskKey(row.api_key));
-  for (const row of db.prepare("SELECT key_text FROM client_keys WHERE key_text IS NOT NULL").all()) out = out.split(row.key_text).join(maskKey(row.key_text));
+  for (const [secret, masked] of secretMaskCache) out = out.split(secret).join(masked);
   return out;
 }
 
@@ -368,9 +378,13 @@ function sweepDailyReset() {
   if (purgedRequests || purgedCooldowns || purgedLogs) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s), ${purgedLogs} old log entr(ies)`);
 }
 
-function setCooldown(model, keyId, seconds, reason) {
+function setCooldownUntil(model, keyId, timestamp, reason) {
   db.prepare("INSERT INTO model_key_state (model,key_id,cooldown_until,cooldown_reason) VALUES (?,?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,cooldown_reason=excluded.cooldown_reason")
-    .run(model, keyId, Date.now() + Math.max(0, seconds) * 1000, reason);
+    .run(model, keyId, timestamp, reason);
+}
+
+function setCooldown(model, keyId, seconds, reason) {
+  setCooldownUntil(model, keyId, Date.now() + Math.max(0, seconds) * 1000, reason);
 }
 
 function nextPacificReset(now = Date.now()) {
@@ -382,41 +396,45 @@ function keyCooldown(model, keyId) {
   return state && state.cooldown_until > Date.now() ? state : null;
 }
 
-function forwardToGemini(request, body, key, opts = {}) {
+function forwardToGemini(context, body, key, opts = {}) {
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
-    const incomingUrl = new URL(request.url, "http://localhost");
+    const incomingUrl = new URL(context.url, "http://localhost");
     const upstreamUrl = new URL("https://generativelanguage.googleapis.com");
     upstreamUrl.pathname = incomingUrl.pathname;
     upstreamUrl.search = incomingUrl.search;
     if (upstreamUrl.searchParams.has("key")) upstreamUrl.searchParams.set("key", key);
     const headers = {};
     for (const name of ["content-type", "accept", "user-agent", "x-goog-api-client", "x-goog-user-project"]) {
-      if (request.headers[name]) headers[name] = request.headers[name];
+      const value = (context.headers || {})[name];
+      if (value) headers[name] = value;
     }
     headers["content-length"] = body.length;
     headers["x-goog-api-key"] = key;
     let settled = false;
     const finish = (fn, value) => { if (!settled) { settled = true; fn(value); } };
     const clientResponse = opts.clientResponse;
+    const timeoutMs = Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Number(opts.timeoutMs) || REQUEST_TIMEOUT_MS));
     const upstreamRequest = https.request({
       hostname: upstreamUrl.hostname,
       port: upstreamUrl.port || 443,
       path: `${upstreamUrl.pathname}${upstreamUrl.search}`,
-      method: request.method,
-      timeout: Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Number(opts.timeoutMs) || REQUEST_TIMEOUT_MS)),
+      method: context.method || "GET",
+      timeout: timeoutMs,
       headers,
     }, (response) => {
-      dbg("Upstream", `[${(opts.traceId || "").slice(0, 8)}] key ${maskKey(key)} -> ${request.method} ${upstreamUrl.pathname} started (timeout ${Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Number(opts.timeoutMs) || REQUEST_TIMEOUT_MS))}ms)`);
+      dbg("Upstream", `[${(opts.traceId || "").slice(0, 8)}] key ${maskKey(key)} -> ${context.method || "GET"} ${upstreamUrl.pathname} started (timeout ${timeoutMs}ms)`);
       const chunks = [];
       let bytes = 0;
       let tooLarge = false;
+      let complete = false;
       response.on("data", (chunk) => {
         bytes += chunk.length;
         if (bytes <= MAX_RESPONSE_BYTES) chunks.push(chunk);
         else tooLarge = true;
       });
       response.on("end", () => {
+        complete = true;
         if (tooLarge) return finish(reject, Object.assign(new Error("Gemini response is too large"), { status: 502 }));
         dbg("Upstream", `key ${maskKey(key)} <- ${response.statusCode} (${Date.now() - startedAt}ms, ${Buffer.concat(chunks).length} bytes)`);
         finish(resolve, {
@@ -424,6 +442,11 @@ function forwardToGemini(request, body, key, opts = {}) {
           headers: response.headers,
           body: Buffer.concat(chunks),
         });
+      });
+      response.on("aborted", () => finish(reject, Object.assign(new Error("Upstream connection aborted mid-response"), { status: 502 })));
+      response.on("error", (error) => finish(reject, error));
+      response.on("close", () => {
+        if (!complete) finish(reject, Object.assign(new Error("Upstream closed before completing the response"), { status: 502 }));
       });
     });
     if (clientResponse) {
@@ -435,6 +458,10 @@ function forwardToGemini(request, body, key, opts = {}) {
     upstreamRequest.on("error", (error) => finish(reject, error));
     upstreamRequest.end(body);
   });
+}
+
+function contextFromRequest(request) {
+  return { url: request.url, method: request.method, headers: request.headers };
 }
 
 function returnUpstream(response, result) {
@@ -456,11 +483,6 @@ function classifyUpstream(result) {
   if (/\b(per[_ ]?day|daily|requests per day|\brpd\b)\b/.test(message) || detailsText.includes("perday") || detailsText.includes("per_day")) return "daily_quota";
   if ([408, 429, 500, 502, 503, 504].includes(result.status)) return "transient";
   return "permanent";
-}
-
-function setCooldownUntil(model, keyId, timestamp, reason) {
-  db.prepare("INSERT INTO model_key_state (model,key_id,cooldown_until,cooldown_reason) VALUES (?,?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,cooldown_reason=excluded.cooldown_reason")
-    .run(model, keyId, timestamp, reason);
 }
 
 function syncModelsFromGemini(result) {
@@ -492,59 +514,59 @@ function buildModelsPayload(allModels) {
 }
 
 let modelsRefreshInFlight = null;
-function refreshModelsOnce(request) {
+function refreshModelsOnce(context) {
   if (!modelsRefreshInFlight) {
-    modelsRefreshInFlight = refreshModels(request).finally(() => { modelsRefreshInFlight = null; });
+    modelsRefreshInFlight = refreshModels(context).finally(() => { modelsRefreshInFlight = null; });
   }
   return modelsRefreshInFlight;
 }
 
-async function refreshModels(request) {
+async function refreshModels(context) {
   const keys = poolKeys();
-  log("info", "Models", `sync started: racing ${keys.length} key(s)`);
-  const attempts = keys.map((key) => (async () => {
-    const result = await forwardToGemini(request, Buffer.alloc(0), key.api_key);
+  log("info", "Models", `sync started: trying ${keys.length} key(s) in order`);
+  let lastResult = null;
+  for (const key of keys) {
+    let result;
+    try {
+      result = await forwardToGemini(context, Buffer.alloc(0), key.api_key);
+    } catch (error) {
+      log("warn", "Models", `key ${maskKey(key.api_key)} transport failure: ${error.message}`);
+      continue;
+    }
+    lastResult = lastResult || result;
     if (result.status < 200 || result.status >= 300) {
-      log("warn", "Models", `key ${maskKey(key.api_key)} returned ${result.status}; skipping`);
-      return { key, result, models: null };
+      log("warn", "Models", `key ${maskKey(key.api_key)} returned ${result.status}; trying next`);
+      continue;
     }
     let payload;
     try { payload = JSON.parse(result.body.toString("utf8")); } catch { payload = null; }
     if (!payload || !Array.isArray(payload.models)) {
       log("error", "Models", `key ${maskKey(key.api_key)}: 200 but body is not a models list (first bytes: ${result.body.subarray(0, 40).toString("hex")})`);
-      return { key, result, models: null };
+      continue;
     }
     const allModels = [...payload.models];
     let pageToken = payload.nextPageToken;
     for (let page = 0; page < 20 && pageToken; page += 1) {
-      const pageUrl = new URL(request.url, "http://localhost");
+      const pageUrl = new URL(context.url, "http://localhost");
       pageUrl.searchParams.set("pageToken", pageToken);
-      const pageResult = await forwardToGemini({ ...request, url: pageUrl.pathname + pageUrl.search }, Buffer.alloc(0), key.api_key);
+      const pageResult = await forwardToGemini({ url: pageUrl.pathname + pageUrl.search, method: "GET", headers: {} }, Buffer.alloc(0), key.api_key);
       if (pageResult.status < 200 || pageResult.status >= 300) break;
       let pagePayload;
-      try { pagePayload = JSON.parse(pageResult.body.toString("utf8")); } catch { pagePayload = null; }
+      try { pagePayload = JSON.parse(pageResult.body.toString("utf8")); } catch { break; }
       if (!pagePayload || !Array.isArray(pagePayload.models)) break;
       allModels.push(...pagePayload.models);
       pageToken = pagePayload.nextPageToken;
     }
-    return { key, result, models: buildModelsPayload(allModels) };
-  })());
-  const settled = await Promise.allSettled(attempts);
-  let lastResult = null;
-  for (const outcome of settled) {
-    if (outcome.status !== "fulfilled") {
-      log("error", "Models", `key attempt threw: ${outcome.reason?.message}`);
+    const models = buildModelsPayload(allModels);
+    if (!models.models.length) {
+      log("warn", "Models", `key ${maskKey(key.api_key)} produced an empty model list; trying next`);
       continue;
     }
-    const { key, result, models } = outcome.value;
-    lastResult = lastResult || result;
-    if (models && models.models.length) {
-      setMeta("models_cache", JSON.stringify(models));
-      setMeta("models_checked_at", Date.now());
-      syncModelsFromGemini({ body: Buffer.from(JSON.stringify(models)) });
-      log("info", "Models", `sync succeeded via key ${maskKey(key.api_key)}: ${models.models.length} models cached`);
-      return result;
-    }
+    setMeta("models_cache", JSON.stringify(models));
+    setMeta("models_checked_at", Date.now());
+    syncModelsFromGemini({ body: Buffer.from(JSON.stringify(models)) });
+    log("info", "Models", `sync succeeded via key ${maskKey(key.api_key)}: ${models.models.length} models cached`);
+    return result;
   }
   log("error", "Models", `sync failed on all ${keys.length} key(s)`);
   return lastResult || { status: 503, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify({ error: "No Gemini API keys" })) };
@@ -579,7 +601,7 @@ async function handleModelsList(request, response) {
     return json(response, 200, payload);
   }
   log("info", "Models", `no cache and no known models; blocking on upstream sync`);
-  return returnUpstream(response, await refreshModelsOnce(request));
+  return returnUpstream(response, await refreshModelsOnce(contextFromRequest(request)));
 }
 
 async function handleGemini(request, response, model) {
@@ -631,6 +653,7 @@ async function handleGemini(request, response, model) {
   let lastKey;
   let attempt = 0;
   const loopStartedAt = Date.now();
+  const upstreamContext = { url: request.url, method: request.method, headers: request.headers };
   for (const selected of everyKey) {
     if (attempt >= KEY_FALLBACK_ATTEMPTS) {
       log("info", "Gemini", `[${short}] ${model}: reached attempt cap (${KEY_FALLBACK_ATTEMPTS}); relaying last upstream response to client`);
@@ -657,7 +680,7 @@ async function handleGemini(request, response, model) {
     mark("select", `attempt ${attempt}/${Math.min(everyKey.length, KEY_FALLBACK_ATTEMPTS)} -> key #${selected.id} "${selected.label}" ${maskKey(selected.api_key)}${selected.rank === 1 ? ` [cooling: ${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left]` : ""}`);
     const callStartedAt = Date.now();
     try {
-      const result = await forwardToGemini(request, body, selected.api_key, { timeoutMs: KEY_LOOP_DEADLINE_MS - elapsed, clientResponse: response, traceId });
+      const result = await forwardToGemini(upstreamContext, body, selected.api_key, { timeoutMs: KEY_LOOP_DEADLINE_MS - elapsed, clientResponse: response, traceId });
       lastResult = result;
       lastKey = selected;
       recordRequest(model, selected.id, result.status);
@@ -720,7 +743,17 @@ async function handleGemini(request, response, model) {
   return json(response, 502, { error: { code: 502, status: "BAD_GATEWAY", message: "Gemini did not respond on any attempted key" } });
 }
 
-const dashboard = fs.readFileSync("dashboard.html", "utf8");
+const dashboardHtml = fs.readFileSync("dashboard.html", "utf8");
+const dashboardGzip = zlib.gzipSync(dashboardHtml);
+
+function sendDashboard(request, response) {
+  if ((request.headers["accept-encoding"] || "").includes("gzip")) {
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Encoding": "gzip", Vary: "Accept-Encoding" });
+    return response.end(dashboardGzip);
+  }
+  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  return response.end(dashboardHtml);
+}
 
 async function handleRequest(request, response) {
   securityHeaders(response);
@@ -744,7 +777,7 @@ async function handleRequest(request, response) {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return response.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Studio Proxy Sign In</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Plus Jakarta Sans\',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius: 0;padding:32px;width:100%;max-width:380px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:8px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius: 0;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:24px}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius: 0;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius: 0;background:#0f172a;color:#fff;cursor:pointer;margin-top:6px;transition:background .15s}button:hover{background:#334155}</style></head><body><div class="card"><div class="brand"><div class="badge">AS</div><h1>AI Studio Proxy</h1></div><p>Sign in to access key routing & usage telemetry</p><form method="post" action="/login"><label>Username</label><input name="username" placeholder="Username" required><label>Password</label><input name="password" type="password" placeholder="Password" required><button>Sign In</button></form></div></body></html>');
     }
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(dashboard);
+    return sendDashboard(request, response);
   }
   if (url.pathname === "/api/setup" && request.method === "POST") {
     if (hasAdmin()) return json(response, 409, { error: "Setup is already complete" });
@@ -787,14 +820,14 @@ async function handleRequest(request, response) {
     sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, csrfToken });
     log("info", "Auth", `user '${username}' logged in from ${address} (session expires in ${SESSION_TTL_MS / 3600000}h)`);
     const secure = request.headers["x-forwarded-proto"] === "https" || request.socket.encrypted ? "; Secure" : "";
-    response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`ai_studio_proxy_dashboard=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`, `ai_studio_proxy_csrf=${csrfToken}; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`] }); return response.end();
+    response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`${COOKIE_SESSION}=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`, `${COOKIE_CSRF}=${csrfToken}; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`] }); return response.end();
   }
   if (url.pathname === "/logout" && request.method === "POST") {
     if (!csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
-    const token = (request.headers.cookie || "").match(/(?:^|; )ai_studio_proxy_dashboard=([^;]+)/)?.[1];
+    const token = cookieValue(request, COOKIE_SESSION);
     if (token) sessions.delete(token);
     log("info", "Auth", `user logged out`);
-    response.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": ["ai_studio_proxy_dashboard=; HttpOnly; SameSite=Strict; Max-Age=0", "ai_studio_proxy_csrf=; SameSite=Strict; Max-Age=0"] });
+    response.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`${COOKIE_SESSION}=; HttpOnly; SameSite=Strict; Max-Age=0`, `${COOKIE_CSRF}=; HttpOnly; SameSite=Strict; Max-Age=0`] });
     return response.end();
   }
   if (url.pathname.startsWith("/api/admin") && !dashboardSessionValid(request)) {
@@ -854,13 +887,16 @@ async function handleRequest(request, response) {
     return json(response, 201, { ok: true, clientApiKey });
   }
   const clientKeyMatch = url.pathname.match(/^\/api\/admin\/client-keys\/(\d+)$/);
-  if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); log("info", "Admin", `client key #${clientKeyMatch[1]} deleted`); return json(response, 200, { ok: true }); }
+  if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); invalidateSecretMaskCache(); log("info", "Admin", `client key #${clientKeyMatch[1]} deleted`); return json(response, 200, { ok: true }); }
   if (url.pathname === "/api/admin/keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
-    if (!String(body.key || "").trim()) return json(response, 400, { error: "API key is required" });
+    const keyValue = String(body.key || "").trim();
+    if (!keyValue) return json(response, 400, { error: "API key is required" });
+    if (db.prepare("SELECT id FROM api_keys WHERE api_key = ?").get(keyValue)) return json(response, 409, { error: "This API key is already configured" });
     const label = String(body.label || "").trim() || nextAutoLabel("api_keys", "Key");
-    db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)").run(label, String(body.key).trim(), Date.now());
-    log("info", "Admin", `Gemini key added: '${label}' ${maskKey(String(body.key).trim())}`);
+    db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)").run(label, keyValue, Date.now());
+    invalidateSecretMaskCache();
+    log("info", "Admin", `Gemini key added: '${label}' ${maskKey(keyValue)}`);
     return json(response, 201, { ok: true });
   }
   const keyMatch = url.pathname.match(/^\/api\/admin\/keys\/(\d+)$/);
@@ -870,6 +906,7 @@ async function handleRequest(request, response) {
     db.prepare("DELETE FROM requests WHERE key_id=?").run(keyId);
     db.prepare("DELETE FROM model_key_state WHERE key_id=?").run(keyId);
     db.prepare("DELETE FROM api_keys WHERE id=?").run(keyId);
+    invalidateSecretMaskCache();
     log("info", "Admin", `Gemini key #${keyId}${deleted ? ` ('${deleted.label}')` : ""} deleted with its usage data`);
     return json(response, 200, { ok: true });
   }
@@ -895,6 +932,11 @@ const server = http.createServer((request, response) => {
   });
 });
 
+server.on("error", (error) => {
+  log("error", "Boot", `cannot start server: ${error.message}`);
+  process.exit(1);
+});
+
 function shutdown(signal) {
   log("info", "Shutdown", `${signal} received; closing server`);
   server.close(() => { try { db.close(); } catch {} process.exit(0); });
@@ -916,7 +958,7 @@ setInterval(() => {
 }, 60_000).unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  log("info", "Boot", `AI Studio Proxy listening on port ${PORT} (full debug logging enabled)`);
+  log("info", "Boot", `AI Studio Proxy listening on port ${PORT}${DEBUG ? " (debug logging enabled)" : " (set DEBUG=1 for debug logging)"}`);
   if (!hasAdmin()) log("info", "Setup", "no administrator yet; open the web dashboard to create one");
 });
 
