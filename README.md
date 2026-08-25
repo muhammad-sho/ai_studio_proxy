@@ -12,6 +12,7 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 * Per-key and per-model usage tracking in a web dashboard
 * Automatic model discovery from Google, served from a local cache so `/v1beta/models` answers instantly
 * Web dashboard for managing keys, usage, cooldown status, and full request logs with payload inspection
+* Per-model success/failure statistics with failure reasons, kept for a rolling 30 days
 * SQLite storage — no external database needed
 * Docker and Docker Compose support
 * Simple API authentication with your own proxy API keys
@@ -110,7 +111,8 @@ cd ai_studio_proxy
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-Or run directly with Node.js 22+ (no packages to install):
+Or run directly with Node.js 22+ (no packages to install, from the project
+directory):
 
 ```bash
 node server.js
@@ -144,7 +146,7 @@ switch once so `docker compose pull` follows the new name:
 
 # Dashboard
 
-Open `http://YOUR_SERVER_IP:9009` and sign in. The dashboard has four tabs:
+Open `http://YOUR_SERVER_IP:9009` and sign in. The dashboard has six tabs:
 
 | Tab | What it does |
 | --- | --- |
@@ -270,6 +272,8 @@ The proxy uses SQLite (stored at `./data/ai-studio-proxy.db` next to your
 * Client API keys
 * Gemini API keys
 * Usage records and cooldown state
+* Request logs (last 1,000 entries)
+* Per-model statistics (rolling 30 days)
 
 The directory is mounted as a bind mount by Docker Compose, survives restarts
 and image upgrades, and needs no manual permission fixes. Back up the `data/`
@@ -302,7 +306,7 @@ dashboard setup. Add these to the `environment:` section of
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
 | `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |
 
-Logging: every request, upstream call, key rotation decision, auth event and admin action is written to stdout with a timestamp. Secrets (API keys, passwords, tokens) are always masked. Set `DEBUG=1` for extra per-attempt trace logging.
+Logging: every request, auth event, admin action and key failure is written to stdout with a timestamp; secrets (API keys, passwords, tokens) are always masked. Set `DEBUG=1` for detailed per-attempt tracing of key selection and upstream calls.
 
 See `.env.example` for a starting point.
 

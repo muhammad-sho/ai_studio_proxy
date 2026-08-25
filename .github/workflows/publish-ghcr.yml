@@ -24,9 +24,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/muhammad-sho/ai-studio-proxy
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+
       - name: Build and publish image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/muhammad-sho/ai-studio-proxy:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
