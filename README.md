@@ -5,7 +5,7 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 ## Features
 
 * Multiple Gemini API keys pooled behind one proxy endpoint
-* **Best-key selection, best-to-worst** — ready keys first (least-used rotation per model); if none are ready, the least-bad key is tried anyway, starting with the soonest-expiring cooldown
+* **Least-used key selection** — requests go to the key with the fewest successful requests for that model; if all keys are in cooldown, the one closest to expiry is used
 * Automatic retry on another key when one fails
 * Automatic cooldown when a key is overloaded or out of daily quota
 * Google's responses — successes and errors alike — are relayed to the client exactly as received
@@ -100,7 +100,7 @@ http://YOUR_SERVER_IP:9009
 4. Open **Client Keys** and generate a key for your application. Every key has
    a **Copy Key** button, so you can copy it again anytime.
 
-Done — start sending requests.
+Setup is complete.
 
 ### Run from source instead (development)
 
@@ -130,10 +130,10 @@ switch once so `docker compose pull` follows the new name:
    `ghcr.io/muhammad-sho/ai-studio-proxy:latest`, and `DB_PATH`
    `/data/local-gemini-proxy.db` → `/data/ai-studio-proxy.db`.
 2. Run `docker compose pull && docker compose up -d`.
-3. Your database moves with you: when `DB_PATH` is left at its default, the
-   container automatically renames `/data/local-gemini-proxy.db` (plus its
-   `-wal`/`-shm` sidecars) on first start. With a custom `DB_PATH`, rename the
-   file yourself before upgrading.
+3. Database migration is automatic: when `DB_PATH` is left at its default,
+   the container renames `/data/local-gemini-proxy.db` (plus its `-wal`/`-shm`
+   sidecars) on first start. With a custom `DB_PATH`, rename the file before
+   upgrading.
 4. Running from source without `DB_PATH`: run
    `mv local-gemini-proxy.db ai-studio-proxy.db` in the project directory, or
    set `DB_PATH=./local-gemini-proxy.db`.
@@ -240,16 +240,16 @@ This prevents a temporarily limited key from repeatedly receiving requests.
 # Models
 
 Models are **not** configured manually. The model list is discovered from
-Google and **cached locally**, so calls to `GET /v1beta/models` (like the ones
-n8n makes during setup) return instantly instead of waiting for Google.
+Google and **cached locally**, so calls to `GET /v1beta/models` return
+instantly instead of waiting for Google.
 
 * First call with no cache: fetches from Google once, then caches.
 * Every later call: served from cache — no delay.
 * The cache refreshes itself in the background when it gets older than 24
   hours (`MODELS_CACHE_TTL_HOURS`, see settings). Your request is never
   delayed by a refresh.
-* Want to force it? Use the **Refresh** button next to *Model Sync* on the
-  dashboard's Overview tab.
+* To refresh manually, use the **Refresh** button next to *Model Sync* on
+  the dashboard's Overview tab.
 
 The proxy also removes models that Google no longer offers and records the
 sync time shown in the dashboard.

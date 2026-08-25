@@ -615,7 +615,7 @@
       <div class="brand-badge">AS</div>
       <div>
         <h1 class="brand-title">AI Studio Proxy</h1>
-        <p class="brand-sub">High-Contrast Key Routing Control Plane</p>
+        <p class="brand-sub">Gemini API Proxy &amp; Key Pool Manager</p>
       </div>
     </div>
     <div class="header-actions">
@@ -687,11 +687,11 @@
   <div id="panel-gemini-keys" class="panel">
     <div class="section-box">
       <h2 class="section-title">Add Gemini API Key</h2>
-      <p class="section-desc">Add upstream Google Gemini keys for automatic least-used routing.</p>
+      <p class="section-desc">Add API keys from your Google AI Studio accounts. Requests are distributed across all configured keys.</p>
       <form id="keyForm" class="form-flex">
         <div class="field-col">
-          <label class="field-label">Account Label</label>
-          <input type="text" name="label" class="form-input" placeholder="Optional — auto-generated if empty">
+          <label class="field-label">Label <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+          <input type="text" name="label" class="form-input" placeholder="e.g. google-account-01">
         </div>
         <div class="field-col" style="flex:2">
           <label class="field-label">Gemini API Key</label>
@@ -718,18 +718,18 @@
     <div id="generatedClientKey" class="key-alert"></div>
     <div class="section-box">
       <h2 class="section-title">Generate Client Key</h2>
-      <p class="section-desc">Generate an API key for any app or service. Every key keeps a Copy button so you can grab it again anytime.</p>
+      <p class="section-desc">Create API keys for your applications. Each key can be copied again at any time.</p>
       <form id="clientKeyForm" class="form-flex">
         <div class="field-col">
-          <label class="field-label">Key Label / Service Name</label>
-          <input type="text" name="label" class="form-input" placeholder="Optional — auto-generated if empty">
+          <label class="field-label">Label <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+          <input type="text" name="label" class="form-input" placeholder="e.g. n8n-workflow">
         </div>
         <button type="submit" class="btn-primary">Generate Key</button>
       </form>
     </div>
     <div class="section-box">
       <h2 class="section-title">Active Client Keys</h2>
-      <p class="section-desc">Keys stay saved on the server so every row keeps a working Copy button — but anyone with dashboard access can retrieve them, so protect this admin account.</p>
+      <p class="section-desc">Client keys are stored on the server so they can be copied again at any time. Anyone with dashboard access can retrieve them.</p>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -745,7 +745,7 @@
   <div id="panel-howto" class="panel">
     <div class="section-box">
       <h2 class="section-title">Connect any app</h2>
-      <p class="section-desc">Any tool that speaks the Gemini API works — automations, SDKs, scripts, chat UIs. Change only two things: the URL points to this server, and the key is one of your client keys.</p>
+      <p class="section-desc">Any application compatible with the Gemini API can use this proxy. Point the request URL to this server and authenticate with one of your client keys.</p>
       <div class="info-strip" style="margin-bottom:0">
         <div><strong>Proxy URL:</strong> <code style="font-family:'JetBrains Mono',monospace" id="howto-origin">—</code></div>
         <div><strong>Auth header:</strong> <code style="font-family:'JetBrains Mono',monospace">x-proxy-api-key</code></div>
@@ -770,7 +770,7 @@
     ]
   }'</pre>
       </div>
-      <p class="section-desc" style="margin-top:12px">Swap <code>gemini-2.0-flash</code> for any model from the list below. The response is Google's response, unchanged.</p>
+      <p class="section-desc" style="margin-top:12px">Replace <code>gemini-2.0-flash</code> with any available model. Responses are passed through from Google unchanged.</p>
     </div>
 
     <div class="section-box">
@@ -780,7 +780,7 @@
         <pre>curl http://<span class="howto-host"></span>/v1beta/models \
   -H "x-proxy-api-key: YOUR-CLIENT-KEY"</pre>
       </div>
-      <p class="section-desc" style="margin-top:12px">Answers instantly from the local cache and refreshes from Google in the background once a day. The sync time is shown on the Overview tab.</p>
+      <p class="section-desc" style="margin-top:12px">Served from a local cache and refreshed from Google daily.</p>
     </div>
 
     <div class="section-box">
@@ -833,7 +833,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           </tbody>
         </table>
       </div>
-      <p class="section-desc" style="margin-top:12px">Tip: when a key hits a limit or an outage, the proxy already retries the request on another key before answering.</p>
+      <p class="section-desc" style="margin-top:12px">If a key is rate-limited or unavailable, the request is automatically retried on another key.</p>
     </div>
   </div>
 
@@ -873,7 +873,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   <div id="panel-stats" class="panel">
     <div class="section-box">
       <h2 class="section-title">Model Statistics</h2>
-      <p class="section-desc">Permanent per-model outcome tracking, independent of which key served the request. Use it to move traffic away from models with high failure rates. Kept for a rolling 30 days.</p>
+      <p class="section-desc">Success and failure counts per model over the selected window, across all keys. Use this to identify models with high failure rates.</p>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
         <select id="statsWindow" class="form-input" style="width:auto" onchange="loadStats()">
           <option value="1">Last 24 hours</option>
@@ -964,7 +964,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     const box = document.getElementById('generatedClientKey');
     box.className = 'key-alert visible';
     box.innerHTML = `<div class="key-alert-head">Your new client key</div>
-      <div style="font-size:12px;color:var(--text-dim)">Use it in your apps. You can copy it again anytime from the Client Keys list.</div>
+      <div style="font-size:12px;color:var(--text-dim)">Copy it now or at any time from the Client Keys tab.</div>
       <code class="key-alert-code">${esc(key)}</code>
       <button class="btn-tbl" onclick="copyText('${esc(key)}',this)">Copy Key</button>`;
   }
@@ -1176,7 +1176,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     pool:     { label: 'key pool', tone: '' },
     order:    { label: 'order',    tone: '' },
     select:   { label: 'attempt',  tone: '' },
-    upstream: { label: 'google said', tone: 'tl-warn' },
+    upstream: { label: 'response', tone: 'tl-warn' },
     result:   { label: 'google',   tone: '' },
     cooldown: { label: 'cooldown', tone: 'tl-warn' },
     wait:     { label: 'pause',     tone: '' },
