@@ -11,6 +11,7 @@ const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
 const TRANSIENT_COOLDOWN_SECONDS = 60;
+const ATTEMPT_DELAY_MS = Math.max(0, Number(process.env.ATTEMPT_DELAY_MS ?? 5000));
 const KEY_FALLBACK_ATTEMPTS = Math.max(1, Number(process.env.KEY_FALLBACK_ATTEMPTS || 2));
 const LOG_BODY_MAX_BYTES = Math.max(1024, Number(process.env.LOG_BODY_MAX_BYTES || 64 * 1024));
 const MAX_LOG_ENTRIES = Math.max(50, Number(process.env.MAX_LOG_ENTRIES || 1000));
@@ -485,21 +486,7 @@ function classifyUpstream(result) {
   return "permanent";
 }
 
-function upstreamRetryAfterSeconds(result) {
-  try {
-    const error = JSON.parse(result.body.toString("utf8")).error || {};
-    const details = Array.isArray(error.details) ? error.details : [];
-    let seconds = null;
-    for (const detail of details) {
-      const type = String(detail?.["@type"] || "");
-      if (type.includes("RetryInfo") && typeof detail.retryDelay === "string") {
-        const match = detail.retryDelay.match(/^(\d+(?:\.\d+)?)s$/);
-        if (match) seconds = Math.max(seconds || 0, Math.ceil(Number(match[1])));
-      }
-    }
-    return seconds === null ? null : Math.min(Math.max(seconds + 1, 15), 3600);
-  } catch { return null; }
-}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function hasQuotaDetails(result) {
   try {
@@ -683,6 +670,10 @@ async function handleGemini(request, response, model) {
       mark("cap", `attempt cap of ${KEY_FALLBACK_ATTEMPTS} reached; stopping key loop`);
       break;
     }
+    if (attempt >= 1) {
+      mark("wait", `pausing ${ATTEMPT_DELAY_MS}ms before next attempt`);
+      await sleep(ATTEMPT_DELAY_MS);
+    }
     if (response.writableEnded || response.destroyed) {
       log("warn", "Gemini", `[${short}] ${model}: client disconnected before all attempts finished`);
       mark("abort", "client disconnected mid-request");
@@ -717,11 +708,10 @@ async function handleGemini(request, response, model) {
         mark("cooldown", `key #${selected.id} benched until Pacific midnight (daily_quota)`);
         continue;
       } else if (classification === "transient" || classification === "invalid_key") {
-        const retrySeconds = classification === "invalid_key" ? TRANSIENT_COOLDOWN_SECONDS : (upstreamRetryAfterSeconds(result) || TRANSIENT_COOLDOWN_SECONDS);
         const reason = classification === "invalid_key" ? "invalid_key" : (hasQuotaDetails(result) ? "high_demand" : "capacity");
-        setCooldown(model, selected.id, retrySeconds, reason);
-        log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}/${reason}) on ${model}; cooldown ${retrySeconds}s`);
-        mark("cooldown", `key #${selected.id} benched ${retrySeconds}s (${reason}); trying next key`);
+        setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, reason);
+        log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}/${reason}) on ${model}; cooldown ${TRANSIENT_COOLDOWN_SECONDS}s`);
+        mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (${reason}); trying next key`);
         continue;
       }
       dbg("Gemini", `[${short}] ${model}: key #${selected.id} succeeded with ${result.status}; returning upstream response to client`);

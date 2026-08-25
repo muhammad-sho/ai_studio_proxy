@@ -227,8 +227,10 @@ picks another key, and retries:
 
 | Failure | Cooldown |
 | --- | --- |
-| Overload / rate-limit / server errors (408, 429, 5xx) | 60 seconds — or Google's `RetryInfo` delay when provided (clamped 15s–1h) |
+| Overload / rate-limit / server errors (408, 429, 5xx) | 60 seconds |
 | Daily quota exceeded | Until Gemini's next midnight Pacific reset |
+
+Retries on another key pause 5 seconds between attempts (`ATTEMPT_DELAY_MS`).
 
 This prevents a temporarily limited key from repeatedly receiving requests.
 
@@ -288,6 +290,7 @@ dashboard setup. Add these to the `environment:` section of
 | `PORT` | `9009` | Port the proxy listens on |
 | `DB_PATH` | `/data/ai-studio-proxy.db` | SQLite database location inside the container |
 | `DEBUG` | unset | Set to `1` for extra per-attempt debug logging |
+| `ATTEMPT_DELAY_MS` | `5000` | Pause between retry attempts on different Gemini keys |
 | `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
 | `KEY_LOOP_DEADLINE_MS` | same as `REQUEST_TIMEOUT_MS` | Total time budget for trying keys one-by-one on a failed request before giving up |
