@@ -227,7 +227,7 @@ picks another key, and retries:
 
 | Failure | Cooldown |
 | --- | --- |
-| Overload / rate-limit / server errors (408, 429, 5xx) | 60 seconds |
+| Overload / rate-limit / server errors (408, 429, 5xx) | 60 seconds — or Google's `RetryInfo` delay when provided (clamped 15s–1h) |
 | Daily quota exceeded | Until Gemini's next midnight Pacific reset |
 
 This prevents a temporarily limited key from repeatedly receiving requests.

@@ -485,6 +485,22 @@ function classifyUpstream(result) {
   return "permanent";
 }
 
+function upstreamRetryAfterSeconds(result) {
+  try {
+    const error = JSON.parse(result.body.toString("utf8")).error || {};
+    const details = Array.isArray(error.details) ? error.details : [];
+    let seconds = null;
+    for (const detail of details) {
+      const type = String(detail?.["@type"] || "");
+      if (type.includes("RetryInfo") && typeof detail.retryDelay === "string") {
+        const match = detail.retryDelay.match(/^(\d+(?:\.\d+)?)s$/);
+        if (match) seconds = Math.max(seconds || 0, Math.ceil(Number(match[1])));
+      }
+    }
+    return seconds === null ? null : Math.min(Math.max(seconds + 1, 15), 3600);
+  } catch { return null; }
+}
+
 function syncModelsFromGemini(result) {
   let payload;
   try { payload = JSON.parse(result.body.toString("utf8")); } catch { return false; }
@@ -693,9 +709,10 @@ async function handleGemini(request, response, model) {
         mark("cooldown", `key #${selected.id} benched until Pacific midnight (daily_quota)`);
         continue;
       } else if (classification === "transient" || classification === "invalid_key") {
-        setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, classification === "invalid_key" ? "invalid_key" : "high_demand");
-        log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}) on ${model}; cooldown ${TRANSIENT_COOLDOWN_SECONDS}s`);
-        mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (${classification === "invalid_key" ? "invalid_key" : "high_demand"}); trying next key`);
+        const retrySeconds = classification === "invalid_key" ? TRANSIENT_COOLDOWN_SECONDS : (upstreamRetryAfterSeconds(result) || TRANSIENT_COOLDOWN_SECONDS);
+        setCooldown(model, selected.id, retrySeconds, classification === "invalid_key" ? "invalid_key" : "high_demand");
+        log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}) on ${model}; cooldown ${retrySeconds}s`);
+        mark("cooldown", `key #${selected.id} benched ${retrySeconds}s (${classification === "invalid_key" ? "invalid_key" : "high_demand"}); trying next key`);
         continue;
       }
       dbg("Gemini", `[${short}] ${model}: key #${selected.id} succeeded with ${result.status}; returning upstream response to client`);
