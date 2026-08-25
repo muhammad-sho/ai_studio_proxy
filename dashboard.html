@@ -631,6 +631,7 @@
     <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
     <button class="nav-tab" data-tab="howto" onclick="showPanel('howto',this)">How to Use</button>
     <button class="nav-tab" data-tab="logs" onclick="showPanel('logs',this)">Request Logs</button>
+    <button class="nav-tab" data-tab="stats" onclick="showPanel('stats',this)">Model Stats</button>
   </nav>
 
   <!-- Overview Panel -->
@@ -864,6 +865,29 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           <button type="button" class="btn-tbl" id="logsNewerBtn" onclick="logsPage(-1)" style="display:none">&larr; Newer</button>
           <button type="button" class="btn-tbl" id="logsOlderBtn" onclick="logsPage(1)" style="display:none">Older &rarr;</button>
         </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model Stats Panel -->
+  <div id="panel-stats" class="panel">
+    <div class="section-box">
+      <h2 class="section-title">Model Statistics</h2>
+      <p class="section-desc">Permanent per-model outcome tracking, independent of which key served the request. Use it to move traffic away from models with high failure rates. Kept for a rolling 30 days.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <select id="statsWindow" class="form-input" style="width:auto" onchange="loadStats()">
+          <option value="1">Last 24 hours</option>
+          <option value="7">Last 7 days</option>
+          <option value="30" selected>Last 30 days</option>
+        </select>
+        <button type="button" class="btn-primary" onclick="loadStats()">Refresh</button>
+        <span id="statsMeta" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Model</th><th>Requests</th><th>Success</th><th>Failed</th><th>Success Rate</th><th>Failures by Reason</th></tr></thead>
+          <tbody id="statsTbody"><tr><td colspan="6" class="empty-notice">No statistics recorded yet.</td></tr></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -1226,7 +1250,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   }
 
   function showPanel(name, tabEl, updateHash = true) {
-    const validTabs = ['overview', 'gemini-keys', 'client-keys', 'howto', 'logs'];
+    const validTabs = ['overview', 'gemini-keys', 'client-keys', 'howto', 'logs', 'stats'];
     if (!validTabs.includes(name)) name = 'overview';
 
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -1243,6 +1267,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
       history.replaceState(null, '', '#' + name);
     }
     if (name === 'logs') loadLogs();
+    if (name === 'stats') loadStats();
   }
 
   function initActiveTab() {
@@ -1260,6 +1285,31 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   async function load() {
     try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
     if (document.getElementById('panel-logs')?.classList.contains('active')) loadLogs(false);
+    if (document.getElementById('panel-stats')?.classList.contains('active')) loadStats();
+  }
+
+  async function loadStats() {
+    try {
+      const days = document.getElementById('statsWindow').value;
+      const d = await api('/api/admin/stats?days=' + days);
+      document.getElementById('statsMeta').textContent = `${d.window_days}-day window`;
+      const failsByModel = {};
+      for (const f of d.failures || []) (failsByModel[f.model] ||= []).push(f);
+      const rows = d.models || [];
+      document.getElementById('statsTbody').innerHTML = rows.length ? rows.map(m => {
+        const rateCls = m.success_rate >= 95 ? 'tag-ready' : m.success_rate >= 80 ? 'tag-cooldown' : 'tag-off';
+        const reasons = (failsByModel[m.model] || [])
+          .map(f => `<span class="status-tag tag-off" style="margin:2px" title="${esc(f.code)}">${esc(f.code)} &times;${f.n}</span>`).join(' ') || '—';
+        return `<tr>
+          <td><strong>${esc(m.model)}</strong></td>
+          <td>${m.total}</td>
+          <td>${m.success}</td>
+          <td>${m.failed}</td>
+          <td><span class="status-tag ${rateCls}">${m.success_rate}%</span></td>
+          <td>${reasons}</td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="6" class="empty-notice">No statistics recorded yet.</td></tr>';
+    } catch (err) { console.error(err); }
   }
 
   async function refreshModels() {

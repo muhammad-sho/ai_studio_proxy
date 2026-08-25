@@ -153,6 +153,7 @@ Open `http://YOUR_SERVER_IP:9009` and sign in. The dashboard has four tabs:
 | **Client Keys** | Generate and manage the API keys your applications use |
 | **How to Use** | Copy-paste API examples for calling the proxy |
 | **Request Logs** | Every generation attempt with time, model, key, attempt number, and result. Filter by model/result or search; click a row to inspect the exact request/response payloads (API keys masked) |
+| **Model Stats** | Rolling 30-day success/failure rates per model with failure reasons — key-independent, for spotting unreliable models |
 
 Add your Google keys through the dashboard instead of pasting them directly
 into your applications or workflows.

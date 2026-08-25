@@ -98,10 +98,20 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS model_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    ok INTEGER NOT NULL,
+    status INTEGER,
+    error_code TEXT
+  );
   CREATE INDEX IF NOT EXISTS idx_requests_model_key_success_time ON requests(model, key_id, status, created_at);
   CREATE INDEX IF NOT EXISTS idx_requests_model_success_time ON requests(model, status, created_at);
   CREATE INDEX IF NOT EXISTS idx_requests_created_at ON requests(created_at);
   CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);
+  CREATE INDEX IF NOT EXISTS idx_model_stats_model_time ON model_stats(model, created_at);
+  CREATE INDEX IF NOT EXISTS idx_model_stats_created ON model_stats(created_at);
 `);
 
 function json(response, status, value) {
@@ -366,6 +376,18 @@ function recordLog(entry) {
   }
 }
 
+const MODEL_STATS_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+function recordModelStat(model, status, body) {
+  try {
+    const ok = status >= 200 && status < 300 ? 1 : 0;
+    const errorCode = ok ? null : (upstreamErrorCode({ body }) || `HTTP_${status ?? 0}`);
+    db.prepare("INSERT INTO model_stats (created_at,model,ok,status,error_code) VALUES (?,?,?,?,?)")
+      .run(Date.now(), model, ok, status ?? null, errorCode);
+  } catch (error) {
+    log("error", "Stats", `failed to record model stat: ${error.message}`);
+  }
+}
+
 let lastSweptUsageDay = null;
 function sweepDailyReset() {
   const today = pacificDayStart();
@@ -376,7 +398,8 @@ function sweepDailyReset() {
   const purgedRequests = db.prepare("DELETE FROM requests WHERE created_at < ?").run(today).changes;
   const purgedCooldowns = db.prepare("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now()).changes;
   const purgedLogs = db.prepare("DELETE FROM request_logs WHERE id <= (SELECT id FROM request_logs ORDER BY id DESC LIMIT 1 OFFSET ?)").run(MAX_LOG_ENTRIES).changes;
-  if (purgedRequests || purgedCooldowns || purgedLogs) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s), ${purgedLogs} old log entr(ies)`);
+  const purgedStats = db.prepare("DELETE FROM model_stats WHERE created_at < ?").run(Date.now() - MODEL_STATS_RETENTION_MS).changes;
+  if (purgedRequests || purgedCooldowns || purgedLogs || purgedStats) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s), ${purgedLogs} old log entr(ies), ${purgedStats} old model stat row(s)`);
 }
 
 function setCooldownUntil(model, keyId, timestamp, reason) {
@@ -723,6 +746,7 @@ async function handleGemini(request, response, model) {
         outcome: result.status >= 200 && result.status < 300 ? "success" : "failed",
         errorCode: code, attempt, requestBody: body, responseBody: result.body
       });
+      recordModelStat(model, result.status, result.body);
       return returnUpstream(response, result);
     } catch (error) {
       log("warn", "Gemini", `[${short}] key #${selected.id} transport failure on ${model}: ${error.message}`);
@@ -751,11 +775,13 @@ async function handleGemini(request, response, model) {
       errorCode: lastResult.status >= 200 && lastResult.status < 300 ? null : upstreamErrorCode(lastResult),
       attempt, requestBody: body, responseBody: lastResult.body
     });
+    recordModelStat(model, lastResult.status, lastResult.body);
     return returnUpstream(response, lastResult);
   }
   log("error", "Gemini", `[${short}] ${model}: ${attempt} attempt(s) failed without any upstream response`);
   mark("fail", "Google never responded on any attempted key; proxy generated a 502");
   recordLog({ model, traceId, events, status: 502, outcome: "failed", errorCode: "NO_UPSTREAM_RESPONSE", attempt, requestBody: body });
+  recordModelStat(model, 502, Buffer.from("{}"));
   return json(response, 502, { error: { code: 502, status: "BAD_GATEWAY", message: "Gemini did not respond on any attempted key" } });
 }
 
@@ -888,6 +914,20 @@ async function handleRequest(request, response) {
     const entry = db.prepare("SELECT * FROM request_logs WHERE id = ?").get(Number(logMatch[1]));
     if (!entry) return json(response, 404, { error: "Log entry not found" });
     return json(response, 200, entry);
+  }
+  if (url.pathname === "/api/admin/stats" && request.method === "GET") {
+    const days = Math.min(30, Math.max(1, Number(url.searchParams.get("days")) || 30));
+    const since = Date.now() - days * 24 * 60 * 60 * 1000;
+    const models = db.prepare(`
+      SELECT model, COUNT(*) AS total, SUM(ok) AS success, COUNT(*) - SUM(ok) AS failed,
+             ROUND(100.0 * SUM(ok) / COUNT(*), 1) AS success_rate
+      FROM model_stats WHERE created_at >= ? GROUP BY model ORDER BY total DESC
+    `).all(since);
+    const failures = db.prepare(`
+      SELECT model, IFNULL(error_code, 'unknown') AS code, COUNT(*) AS n
+      FROM model_stats WHERE ok = 0 AND created_at >= ? GROUP BY model, error_code ORDER BY n DESC
+    `).all(since);
+    return json(response, 200, { window_days: days, models, failures });
   }
   if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
     log("info", "Admin", `manual model refresh requested`);
