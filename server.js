@@ -228,6 +228,15 @@ function recordLoginFailure(address) {
   loginFailures.push(Date.now());
 }
 
+function nextAutoLabel(table, prefix) {
+  let max = 0;
+  for (const row of db.prepare(`SELECT label FROM ${table}`).all()) {
+    const match = String(row.label).match(`^${prefix}(\\d+)$`);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return `${prefix}${max + 1}`;
+}
+
 function hasAdmin() {
   return Boolean(db.prepare("SELECT id FROM admin_users LIMIT 1").get());
 }
@@ -839,7 +848,7 @@ async function handleRequest(request, response) {
   }
   if (url.pathname === "/api/admin/client-keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
-    const label = String(body.label || "").trim() || `Client-${crypto.randomBytes(2).toString("hex")}`;
+    const label = String(body.label || "").trim() || nextAutoLabel("client_keys", "Client");
     const clientApiKey = createClientKey(label);
     log("info", "Admin", `client key created: '${label}' ${maskKey(clientApiKey)}`);
     return json(response, 201, { ok: true, clientApiKey });
@@ -849,7 +858,7 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/admin/keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
     if (!String(body.key || "").trim()) return json(response, 400, { error: "API key is required" });
-    const label = String(body.label || "").trim() || `Gemini-${crypto.randomBytes(2).toString("hex")}`;
+    const label = String(body.label || "").trim() || nextAutoLabel("api_keys", "Key");
     db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)").run(label, String(body.key).trim(), Date.now());
     log("info", "Admin", `Gemini key added: '${label}' ${maskKey(String(body.key).trim())}`);
     return json(response, 201, { ok: true });
