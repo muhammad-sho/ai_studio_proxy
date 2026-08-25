@@ -841,7 +841,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   <div id="panel-logs" class="panel">
     <div class="section-box">
       <h2 class="section-title">Request Logs</h2>
-      <p class="section-desc">Every generateContent attempt with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
+      <p class="section-desc">Every generateContent request with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <select id="logModel" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All models</option></select>
         <select id="logResult" class="form-input" style="width:auto" onchange="loadLogs()">
@@ -967,14 +967,6 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
       <div style="font-size:12px;color:var(--text-dim)">Copy it now or at any time from the Client Keys tab.</div>
       <code class="key-alert-code">${esc(key)}</code>
       <button class="btn-tbl" onclick="copyText('${esc(key)}',this)">Copy Key</button>`;
-  }
-
-  function cooldown(row) {
-    if (!row.cooldown_until || Number(row.cooldown_until) <= Date.now()) {
-      return '<span class="status-tag tag-ready">Ready</span>';
-    }
-    const reason = esc(row.cooldown_reason || 'quota');
-    return `<span class="status-tag tag-cooldown">Cooldown (${reason})</span>`;
   }
 
   function render(data) {
@@ -1177,7 +1169,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     order:    { label: 'order',    tone: '' },
     select:   { label: 'attempt',  tone: '' },
     upstream: { label: 'response', tone: 'tl-warn' },
-    result:   { label: 'google',   tone: '' },
+    result:   { label: 'outcome',  tone: '' },
     cooldown: { label: 'cooldown', tone: 'tl-warn' },
     wait:     { label: 'pause',     tone: '' },
     cap:      { label: 'cap',       tone: 'tl-warn' },
@@ -1218,7 +1210,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           ${summary('Gemini key', l.key_label ? `${esc(l.key_label)} <code style="font-family:'JetBrains Mono',monospace">(${esc(l.key_masked)})</code>` : '—')}
           ${summary('Attempts', String(l.attempt || 0))}
           ${summary('Result', `${resultTag(l)}${l.error_code ? ` · ${esc(l.error_code)}` : ''}`)}
-          ${summary('Trace', `<code style="font-family:'JetBrains Mono',monospace">${esc((l.trace_id || '').slice(0, 8)) || '—'}</code> <span style="color:var(--text-muted);font-size:11px">(grep this ID in container logs)</span>`)}
+          ${summary('Trace', `<code style="font-family:'JetBrains Mono',monospace">${esc((l.trace_id || '').slice(0, 8)) || '—'}</code> <span style="color:var(--text-muted);font-size:11px">(search this ID in the proxy logs)</span>`)}
         </dl>
         ${timelineHtml(l.events)}`;
       document.getElementById('logModal').style.display = 'flex';
