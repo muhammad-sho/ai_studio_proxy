@@ -839,17 +839,19 @@ async function handleRequest(request, response) {
   }
   if (url.pathname === "/api/admin/client-keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
-    const clientApiKey = createClientKey(String(body.label || "Client key"));
-    log("info", "Admin", `client key created: '${String(body.label || "Client key")}' ${maskKey(clientApiKey)}`);
+    const label = String(body.label || "").trim() || `Client-${crypto.randomBytes(2).toString("hex")}`;
+    const clientApiKey = createClientKey(label);
+    log("info", "Admin", `client key created: '${label}' ${maskKey(clientApiKey)}`);
     return json(response, 201, { ok: true, clientApiKey });
   }
   const clientKeyMatch = url.pathname.match(/^\/api\/admin\/client-keys\/(\d+)$/);
   if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); log("info", "Admin", `client key #${clientKeyMatch[1]} deleted`); return json(response, 200, { ok: true }); }
   if (url.pathname === "/api/admin/keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
-    if (!body.label || !body.key) return json(response, 400, { error: "Label and key are required" });
-    db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)").run(String(body.label), String(body.key), Date.now());
-    log("info", "Admin", `Gemini key added: '${String(body.label)}' ${maskKey(String(body.key))}`);
+    if (!String(body.key || "").trim()) return json(response, 400, { error: "API key is required" });
+    const label = String(body.label || "").trim() || `Gemini-${crypto.randomBytes(2).toString("hex")}`;
+    db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)").run(label, String(body.key).trim(), Date.now());
+    log("info", "Admin", `Gemini key added: '${label}' ${maskKey(String(body.key).trim())}`);
     return json(response, 201, { ok: true });
   }
   const keyMatch = url.pathname.match(/^\/api\/admin\/keys\/(\d+)$/);
