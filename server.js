@@ -700,7 +700,7 @@ async function handleGemini(request, response, model) {
       log("warn", "Gemini", `[${short}] ${model}: no ready key left in cap; using cooling-down key #${selected.id} (${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left)`);
     }
     log("info", "Gemini", `[${short}] ${model}: attempt ${attempt}/${Math.min(everyKey.length, KEY_FALLBACK_ATTEMPTS)} using key #${selected.id} ${maskKey(selected.api_key)}`);
-    mark("select", `attempt ${attempt}/${Math.min(everyKey.length, KEY_FALLBACK_ATTEMPTS)} -> key #${selected.id} "${selected.label}" ${maskKey(selected.api_key)}${selected.rank === 1 ? ` [cooling: ${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left]` : ""}`);
+    mark("select", `attempt ${attempt}/${Math.min(everyKey.length, KEY_FALLBACK_ATTEMPTS)} -> key #${selected.id} "${selected.label}" ${maskKey(selected.api_key)} (${selected.rank === 1 ? `cooling: ${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left` : "ready"}; ${usage.get(selected.id) || 0} success(es) today on this model)`);
     const callStartedAt = Date.now();
     try {
       const result = await forwardToGemini(upstreamContext, body, selected.api_key, { timeoutMs: KEY_LOOP_DEADLINE_MS - elapsed, clientResponse: response, traceId });
@@ -709,6 +709,7 @@ async function handleGemini(request, response, model) {
       recordRequest(model, selected.id, result.status);
       const code = result.status >= 200 && result.status < 300 ? null : upstreamErrorCode(result);
       mark("result", `key #${selected.id} <- Google responded ${result.status}${code ? ` (${code})` : ""} in ${Date.now() - callStartedAt}ms`);
+      if (code) mark("upstream", `Google's response for key #${selected.id}, verbatim: ${clipBody(result.body)}`);
       const classification = classifyUpstream(result);
       if (classification === "daily_quota") {
         setCooldownUntil(model, selected.id, nextPacificReset(), "daily_quota");
