@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const { DatabaseSync } = require("node:sqlite");
 
-const PORT = Number(process.env.PORT || 18765);
+const PORT = Number(process.env.PORT || 9009);
 const DB_PATH = process.env.DB_PATH || "./ai-studio-proxy.db";
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);

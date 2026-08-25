@@ -85,12 +85,12 @@ docker compose logs -f
 The dashboard will be available on:
 
 ```text
-http://YOUR_SERVER_IP:18765
+http://YOUR_SERVER_IP:9009
 ```
 
 ## 2. First-time setup
 
-1. Open `http://YOUR_SERVER_IP:18765`.
+1. Open `http://YOUR_SERVER_IP:9009`.
 2. Create your administrator account (username + password of at least 8
    characters), then sign in. The setup page is only shown until an
    administrator exists — complete it right after starting the container,
@@ -144,7 +144,7 @@ switch once so `docker compose pull` follows the new name:
 
 # Dashboard
 
-Open `http://YOUR_SERVER_IP:18765` and sign in. The dashboard has four tabs:
+Open `http://YOUR_SERVER_IP:9009` and sign in. The dashboard has four tabs:
 
 | Tab | What it does |
 | --- | --- |
@@ -170,7 +170,7 @@ Supported endpoints: `GET /v1beta/models` (list models) and
 (`streamGenerateContent`) and `countTokens` are not proxied.
 
 ```bash
-curl http://127.0.0.1:18765/v1beta/models/gemini-2.0-flash:generateContent \
+curl http://127.0.0.1:9009/v1beta/models/gemini-2.0-flash:generateContent \
   -H "Content-Type: application/json" \
   -H "x-proxy-api-key: YOUR-CLIENT-KEY" \
   -d '{
@@ -285,7 +285,7 @@ dashboard setup. Add these to the `environment:` section of
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `PORT` | `18765` | Port the proxy listens on |
+| `PORT` | `9009` | Port the proxy listens on |
 | `DB_PATH` | `/data/ai-studio-proxy.db` | SQLite database location inside the container |
 | `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
@@ -352,7 +352,7 @@ Google Gemini API keys are stored in the local SQLite database in plaintext
 because the proxy must recover them to authenticate upstream. Protect the
 server and back the database up securely.
 
-Do not expose port `18765` straight to the public internet. Put it behind an
+Do not expose port `9009` straight to the public internet. Put it behind an
 HTTPS reverse proxy or keep it on a trusted network / VPN.
 
 ---

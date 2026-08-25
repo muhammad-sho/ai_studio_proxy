@@ -1308,7 +1308,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
   initActiveTab();
 
-  const proxyHost = location.host || 'localhost:18765';
+  const proxyHost = location.host || 'localhost:9009';
   document.getElementById('howto-origin').textContent = location.origin;
   document.querySelectorAll('.howto-host').forEach(el => { el.textContent = proxyHost; });
 

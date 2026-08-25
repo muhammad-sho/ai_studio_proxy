@@ -4,9 +4,9 @@ services:
     container_name: ai-studio-proxy
     restart: unless-stopped
     ports:
-      - "18765:18765"
+      - "9009:9009"
     volumes:
       - ./data:/data:Z
     environment:
-      PORT: 18765
+      PORT: 9009
       DB_PATH: /data/ai-studio-proxy.db
