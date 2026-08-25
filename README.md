@@ -1,4 +1,4 @@
-# Gemini Proxy
+# AI Studio Proxy
 
 A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind one stable endpoint. It picks the best available key for every request, handles rate limits and cooldowns automatically, and speaks the standard Gemini API — so any app that can call Gemini can use it without changes.
 
@@ -32,7 +32,7 @@ The proxy sits between your application and Google's Gemini API:
        │ x-proxy-api-key: <client key>
        ▼
 ┌──────────────────────┐
-│    Gemini Proxy      │
+│   AI Studio Proxy    │
 │                      │
 │  Auth check          │
 │  Key selection       │
@@ -61,15 +61,15 @@ You only need Docker installed.
 ## 1. Get the compose file and start
 
 ```bash
-mkdir gemini-proxy && cd gemini-proxy
-curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/docker-compose.yml
+mkdir ai-studio-proxy && cd ai-studio-proxy
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/docker-compose.yml
 docker compose up -d
 ```
 
 This pulls the published image:
 
 ```text
-ghcr.io/muhammad-sho/gemini-proxy:latest
+ghcr.io/muhammad-sho/ai-studio-proxy:latest
 ```
 
 > The image is built automatically after every push to `main`. A brand-new
@@ -91,14 +91,13 @@ http://YOUR_SERVER_IP:18765
 ## 2. First-time setup
 
 1. Open `http://YOUR_SERVER_IP:18765`.
-2. If asked for a **setup token**, read it from the logs:
-   ```bash
-   docker compose logs gemini-proxy | grep "setup token"
-   ```
-3. Create your administrator account (username + password of at least 8
-   characters), then sign in.
-4. Open **Gemini API Keys** and add your Google Gemini keys.
-5. Open **Client Keys** and generate a key for your application. Every key has
+2. Create your administrator account (username + password of at least 8
+   characters), then sign in. The setup page is only shown until an
+   administrator exists — complete it right after starting the container,
+   since anyone who can reach the server before you could create the account
+   instead.
+3. Open **Gemini API Keys** and add your Google Gemini keys.
+4. Open **Client Keys** and generate a key for your application. Every key has
    a **Copy Key** button, so you can copy it again anytime.
 
 Done — start sending requests.
@@ -106,8 +105,8 @@ Done — start sending requests.
 ### Run from source instead (development)
 
 ```bash
-git clone https://github.com/muhammad-sho/Gemini_proxy.git
-cd Gemini_proxy
+git clone https://github.com/muhammad-sho/ai_studio_proxy.git
+cd ai_studio_proxy
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
@@ -116,6 +115,30 @@ Or run directly with Node.js 22+ (no packages to install):
 ```bash
 node server.js
 ```
+
+---
+
+# Upgrading from `gemini-proxy`
+
+This project was formerly published as **Gemini Proxy** with the image
+`ghcr.io/muhammad-sho/gemini-proxy`. Existing deployments keep running, but
+switch once so `docker compose pull` follows the new name:
+
+1. Update your `docker-compose.yml` (a fresh copy already contains these):
+   service and container `gemini-proxy` → `ai-studio-proxy`, image
+   `ghcr.io/muhammad-sho/gemini-proxy:latest` →
+   `ghcr.io/muhammad-sho/ai-studio-proxy:latest`, and `DB_PATH`
+   `/data/local-gemini-proxy.db` → `/data/ai-studio-proxy.db`.
+2. Run `docker compose pull && docker compose up -d`.
+3. Your database moves with you: when `DB_PATH` is left at its default, the
+   container automatically renames `/data/local-gemini-proxy.db` (plus its
+   `-wal`/`-shm` sidecars) on first start. With a custom `DB_PATH`, rename the
+   file yourself before upgrading.
+4. Running from source without `DB_PATH`: run
+   `mv local-gemini-proxy.db ai-studio-proxy.db` in the project directory, or
+   set `DB_PATH=./local-gemini-proxy.db`.
+5. Dashboard cookies and saved UI preferences got new names, so you are
+   signed out once and the chosen theme/tab resets.
 
 ---
 
@@ -237,7 +260,7 @@ still forwarded to Google (Google decides whether to serve it).
 
 # Database
 
-The proxy uses SQLite (stored at `./data/local-gemini-proxy.db` next to your
+The proxy uses SQLite (stored at `./data/ai-studio-proxy.db` next to your
 `docker-compose.yml`) to persist:
 
 * Administrator account
@@ -263,8 +286,7 @@ dashboard setup. Add these to the `environment:` section of
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `18765` | Port the proxy listens on |
-| `DB_PATH` | `/data/local-gemini-proxy.db` | SQLite database location inside the container |
-| `SETUP_TOKEN` | random, printed to logs | Your own token required to complete first-time setup |
+| `DB_PATH` | `/data/ai-studio-proxy.db` | SQLite database location inside the container |
 | `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
 | `KEY_LOOP_DEADLINE_MS` | same as `REQUEST_TIMEOUT_MS` | Total time budget for trying keys one-by-one on a failed request before giving up |
@@ -365,4 +387,4 @@ SELinux hosts via the `:Z` mount label.
 
 Repository:
 
-https://github.com/muhammad-sho/Gemini_proxy
+https://github.com/muhammad-sho/ai_studio_proxy

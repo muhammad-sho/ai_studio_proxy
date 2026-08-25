@@ -1,4 +1,4 @@
-# Code Audit — gemini-proxy
+# Code Audit — AI Studio Proxy
 
 Full line-by-line review of `server.js` (619 lines), `dashboard.html` (886 lines), and deployment files. Every High/Medium finding below was verified by code trace; the two High findings were reproduced against a mock Gemini upstream.
 
@@ -76,7 +76,7 @@ Expired sessions are only removed when that exact token is next seen. Unbounded 
 
 ### M9 — Dashboard cookie regex is unanchored
 **`server.js:128`, `137`**
-`/gemini_dashboard=([^;]+)/` matches inside longer cookie names (e.g., `xgemini_dashboard=`); the CSRF regex right below is correctly anchored `(?:^|; )`. Inconsistent hardening.
+`/ai_studio_proxy_dashboard=([^;]+)/` matches inside longer cookie names (e.g., `xai_studio_proxy_dashboard=`); the CSRF regex right below is correctly anchored `(?:^|; )`. Inconsistent hardening.
 
 ### M10 — Only `:generateContent` is proxied
 **`server.js:210-213`**
@@ -86,12 +86,11 @@ Expired sessions are only removed when that exact token is next seen. Unbounded 
 
 ## LOW / Hardening
 
-> **Status after remediation (2026-08-24):** L1, L3–L6, L10–L13 **fixed**. L2 (CSP nonce), L7 (per-client-key attribution), L8 (POST /models legacy route), L9 (dashboard read at boot) intentionally left as-is.
+> **Status after remediation (2026-08-24):** L3–L6, L10–L13 **fixed**. L2 (CSP nonce), L7 (per-client-key attribution), L8 (POST /models legacy route), L9 (dashboard read at boot) intentionally left as-is. L1 (setup-token compare) became moot when the setup token was removed in favor of first-visit signup.
 
 
 | # | Location | Issue |
 |---|---|---|
-| L1 | `server.js:526` | Setup-token compare uses `!==`; use `crypto.timingSafeEqual` |
 | L2 | `server.js:92` | CSP requires `'unsafe-inline'` scripts; move to nonce/hash |
 | L3 | `server.js:336-342` | `returnUpstream` forwards all upstream headers except 2 (`alt-svc`, `x-request-id`, …); allowlist instead |
 | L4 | `server.js:548-550` | Empty username falls back to first admin user — leaks that only password needs guessing |

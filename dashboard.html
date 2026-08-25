@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Gemini Proxy</title>
+  <title>AI Studio Proxy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
@@ -612,9 +612,9 @@
   <!-- Header -->
   <header class="header">
     <div class="brand">
-      <div class="brand-badge">GP</div>
+      <div class="brand-badge">AS</div>
       <div>
-        <h1 class="brand-title">Gemini Proxy</h1>
+        <h1 class="brand-title">AI Studio Proxy</h1>
         <p class="brand-sub">High-Contrast Key Routing Control Plane</p>
       </div>
     </div>
@@ -872,12 +872,12 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
 <script>
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const csrf = () => document.cookie.match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || '';
+  const csrf = () => document.cookie.match(/(?:^|; )ai_studio_proxy_csrf=([^;]+)/)?.[1] || '';
 
   // Theme Management
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('gemini_proxy_theme', theme);
+    localStorage.setItem('ai_studio_proxy_theme', theme);
     const btn = document.getElementById('themeToggleBtn');
     if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
   }
@@ -887,7 +887,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     applyTheme(current === 'dark' ? 'light' : 'dark');
   }
 
-  const savedTheme = localStorage.getItem('gemini_proxy_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const savedTheme = localStorage.getItem('ai_studio_proxy_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   applyTheme(savedTheme);
 
   async function api(url, options = {}) {
@@ -1236,7 +1236,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     const targetTab = tabEl || document.querySelector(`.nav-tab[data-tab="${name}"]`);
     if (targetTab) targetTab.classList.add('active');
 
-    localStorage.setItem('gemini_proxy_tab', name);
+    localStorage.setItem('ai_studio_proxy_tab', name);
     if (updateHash && window.location.hash !== '#' + name) {
       history.replaceState(null, '', '#' + name);
     }
@@ -1245,7 +1245,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
   function initActiveTab() {
     const hash = window.location.hash.replace(/^#/, '');
-    const saved = localStorage.getItem('gemini_proxy_tab');
+    const saved = localStorage.getItem('ai_studio_proxy_tab');
     const initial = hash || saved || 'overview';
     showPanel(initial, null, true);
   }

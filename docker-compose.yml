@@ -1,7 +1,7 @@
 services:
-  gemini-proxy:
-    image: ghcr.io/muhammad-sho/gemini-proxy:latest
-    container_name: gemini-proxy
+  ai-studio-proxy:
+    image: ghcr.io/muhammad-sho/ai-studio-proxy:latest
+    container_name: ai-studio-proxy
     restart: unless-stopped
     ports:
       - "18765:18765"
@@ -9,4 +9,4 @@ services:
       - ./data:/data:Z
     environment:
       PORT: 18765
-      DB_PATH: /data/local-gemini-proxy.db
+      DB_PATH: /data/ai-studio-proxy.db

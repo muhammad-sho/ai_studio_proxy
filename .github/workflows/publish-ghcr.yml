@@ -29,4 +29,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/muhammad-sho/gemini-proxy:latest
+          tags: ghcr.io/muhammad-sho/ai-studio-proxy:latest

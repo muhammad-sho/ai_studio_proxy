@@ -1,4 +1,4 @@
 services:
-  gemini-proxy:
+  ai-studio-proxy:
     build: .
-    image: gemini-proxy:dev
+    image: ai-studio-proxy:dev

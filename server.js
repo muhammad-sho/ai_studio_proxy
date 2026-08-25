@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const { DatabaseSync } = require("node:sqlite");
 
 const PORT = Number(process.env.PORT || 18765);
-const DB_PATH = process.env.DB_PATH || "./local-gemini-proxy.db";
+const DB_PATH = process.env.DB_PATH || "./ai-studio-proxy.db";
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
@@ -20,7 +20,6 @@ const sessions = new Map();
 const loginAttempts = new Map();
 const loginFailures = [];
 const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || "");
-const SETUP_TOKEN = process.env.SETUP_TOKEN || crypto.randomBytes(32).toString("base64url");
 
 function log(level, category, message) {
   const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${category}] ${message}`;
@@ -152,10 +151,6 @@ function hashValue(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function constantTimeEqual(left, right) {
-  return crypto.timingSafeEqual(Buffer.from(hashValue(String(left)), "hex"), Buffer.from(hashValue(String(right)), "hex"));
-}
-
 function localKeyIsValid(request) {
   const query = new URL(request.url, "http://localhost").searchParams;
   const supplied = request.headers["x-proxy-api-key"] ||
@@ -167,7 +162,7 @@ function localKeyIsValid(request) {
 }
 
 function dashboardSessionValid(request) {
-  const token = (request.headers.cookie || "").match(/(?:^|; )gemini_dashboard=([^;]+)/)?.[1];
+  const token = (request.headers.cookie || "").match(/(?:^|; )ai_studio_proxy_dashboard=([^;]+)/)?.[1];
   const session = token ? sessions.get(token) : null;
   if (!session) return false;
   if (session.expiresAt <= Date.now()) { sessions.delete(token); return false; }
@@ -175,14 +170,14 @@ function dashboardSessionValid(request) {
 }
 
 function sessionFromRequest(request) {
-  const token = (request.headers.cookie || "").match(/(?:^|; )gemini_dashboard=([^;]+)/)?.[1];
+  const token = (request.headers.cookie || "").match(/(?:^|; )ai_studio_proxy_dashboard=([^;]+)/)?.[1];
   const session = token ? sessions.get(token) : null;
   return session && session.expiresAt > Date.now() ? session : null;
 }
 
 function csrfValid(request) {
   const session = sessionFromRequest(request);
-  const cookieToken = (request.headers.cookie || "").match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || "";
+  const cookieToken = (request.headers.cookie || "").match(/(?:^|; )ai_studio_proxy_csrf=([^;]+)/)?.[1] || "";
   const headerToken = request.headers["x-csrf-token"] || "";
   return Boolean(session && cookieToken && headerToken && cookieToken === headerToken && session.csrfToken === headerToken);
 }
@@ -259,7 +254,7 @@ function createClientKey(label = "Default client key") {
   return value;
 }
 
-const setupPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Setup</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius: 0;padding:32px;width:100%;max-width:440px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius: 0;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.5}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius: 0;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius: 0;background:#0f172a;color:#fff;cursor:pointer;transition:background .15s}button:hover{background:#334155}a{color:#0f172a;font-weight:700;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><div class="card"><div class="brand"><div class="badge">GP</div><h1>First-Time Setup</h1></div><p>Create the dashboard administrator. Enter the setup token printed in the container logs.</p><form id="setup"><label>Setup Token</label><input name="setupToken" placeholder="Setup token from logs" required><label>Admin Username</label><input name="username" placeholder="Username" required><label>Admin Password</label><input name="password" type="password" minlength="8" placeholder="Password (8+ chars)" required><button>Create Administrator Account</button></form><div id="result"></div></div><script>setup.onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);let r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({setupToken:f.get('setupToken'),username:f.get('username'),password:f.get('password')})});let d=await r.json();if(!r.ok)return alert(d.error);result.innerHTML='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0"><p style="color:#0f172a;font-weight:700;margin-bottom:4px">Administrator account created.</p><p>Sign in to add Gemini keys and generate client API keys.</p><p style="margin-top:12px"><a href="/">Continue to Sign In &rarr;</a></p></div>';e.target.remove()}</script></body></html>`;
+const setupPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Studio Proxy Setup</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius: 0;padding:32px;width:100%;max-width:440px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius: 0;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.5}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius: 0;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius: 0;background:#0f172a;color:#fff;cursor:pointer;transition:background .15s}button:hover{background:#334155}a{color:#0f172a;font-weight:700;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><div class="card"><div class="brand"><div class="badge">AS</div><h1>First-Time Setup</h1></div><p>Create the dashboard administrator. This page is only available until an administrator exists.</p><form id="setup"><label>Admin Username</label><input name="username" placeholder="Username" required><label>Admin Password</label><input name="password" type="password" minlength="8" placeholder="Password (8+ chars)" required><button>Create Administrator Account</button></form><div id="result"></div></div><script>setup.onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);let r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:f.get('username'),password:f.get('password')})});let d=await r.json();if(!r.ok)return alert(d.error);result.innerHTML='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0"><p style="color:#0f172a;font-weight:700;margin-bottom:4px">Administrator account created.</p><p>Sign in to add Gemini keys and generate client API keys.</p><p style="margin-top:12px"><a href="/">Continue to Sign In &rarr;</a></p></div>';e.target.remove()}</script></body></html>`;
 
 function modelNameFromPath(path) {
   const match = path.match(/^\/v1beta\/models\/([^/:]+):generateContent$/);
@@ -738,7 +733,7 @@ async function handleRequest(request, response) {
     if (!hasAdmin()) { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(setupPage); }
     if (!dashboardSessionValid(request)) {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return response.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Sign In</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Plus Jakarta Sans\',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius: 0;padding:32px;width:100%;max-width:380px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:8px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius: 0;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:24px}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius: 0;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius: 0;background:#0f172a;color:#fff;cursor:pointer;margin-top:6px;transition:background .15s}button:hover{background:#334155}</style></head><body><div class="card"><div class="brand"><div class="badge">GP</div><h1>Gemini Proxy</h1></div><p>Sign in to access key routing & usage telemetry</p><form method="post" action="/login"><label>Username</label><input name="username" placeholder="Username" required><label>Password</label><input name="password" type="password" placeholder="Password" required><button>Sign In</button></form></div></body></html>');
+      return response.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Studio Proxy Sign In</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Plus Jakarta Sans\',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius: 0;padding:32px;width:100%;max-width:380px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:8px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius: 0;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:24px}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius: 0;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius: 0;background:#0f172a;color:#fff;cursor:pointer;margin-top:6px;transition:background .15s}button:hover{background:#334155}</style></head><body><div class="card"><div class="brand"><div class="badge">AS</div><h1>AI Studio Proxy</h1></div><p>Sign in to access key routing & usage telemetry</p><form method="post" action="/login"><label>Username</label><input name="username" placeholder="Username" required><label>Password</label><input name="password" type="password" placeholder="Password" required><button>Sign In</button></form></div></body></html>');
     }
     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(dashboard);
   }
@@ -746,11 +741,6 @@ async function handleRequest(request, response) {
     if (hasAdmin()) return json(response, 409, { error: "Setup is already complete" });
     if (rateLimited(clientAddress(request))) return json(response, 429, { error: "Too many setup attempts" });
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
-    if (!constantTimeEqual(body.setupToken || "", SETUP_TOKEN)) {
-      log("warn", "Auth", `invalid setup token from ${clientAddress(request)}`);
-      recordLoginFailure(clientAddress(request));
-      return json(response, 403, { error: "Invalid setup token" });
-    }
     if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(String(body.username || ""))) return json(response, 400, { error: "Username must be 3-64 letters, numbers, _, ., or -" });
     if (String(body.password || "").length < 8) return json(response, 400, { error: "Password must be at least 8 characters" });
     const salt = crypto.randomBytes(16).toString("hex");
@@ -788,14 +778,14 @@ async function handleRequest(request, response) {
     sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, csrfToken });
     log("info", "Auth", `user '${username}' logged in from ${address} (session expires in ${SESSION_TTL_MS / 3600000}h)`);
     const secure = request.headers["x-forwarded-proto"] === "https" || request.socket.encrypted ? "; Secure" : "";
-    response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`gemini_dashboard=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`, `gemini_csrf=${csrfToken}; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`] }); return response.end();
+    response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`ai_studio_proxy_dashboard=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`, `ai_studio_proxy_csrf=${csrfToken}; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`] }); return response.end();
   }
   if (url.pathname === "/logout" && request.method === "POST") {
     if (!csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
-    const token = (request.headers.cookie || "").match(/(?:^|; )gemini_dashboard=([^;]+)/)?.[1];
+    const token = (request.headers.cookie || "").match(/(?:^|; )ai_studio_proxy_dashboard=([^;]+)/)?.[1];
     if (token) sessions.delete(token);
     log("info", "Auth", `user logged out`);
-    response.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": ["gemini_dashboard=; HttpOnly; SameSite=Strict; Max-Age=0", "gemini_csrf=; SameSite=Strict; Max-Age=0"] });
+    response.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": ["ai_studio_proxy_dashboard=; HttpOnly; SameSite=Strict; Max-Age=0", "ai_studio_proxy_csrf=; SameSite=Strict; Max-Age=0"] });
     return response.end();
   }
   if (url.pathname.startsWith("/api/admin") && !dashboardSessionValid(request)) {
@@ -915,8 +905,8 @@ setInterval(() => {
 }, 60_000).unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  log("info", "Boot", `Gemini proxy listening on port ${PORT} (full debug logging enabled)`);
-  if (!hasAdmin()) log("info", "Setup", `one-time setup token: ${SETUP_TOKEN}`);
+  log("info", "Boot", `AI Studio Proxy listening on port ${PORT} (full debug logging enabled)`);
+  if (!hasAdmin()) log("info", "Setup", "no administrator yet; open the web dashboard to create one");
 });
 
 sweepDailyReset();
