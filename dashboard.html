@@ -627,10 +627,10 @@
   <!-- Navigation -->
   <nav class="nav-row">
     <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview &amp; Usage</button>
-    <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
     <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
-    <button class="nav-tab" data-tab="logs" onclick="showPanel('logs',this)">Request Logs</button>
+    <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
     <button class="nav-tab" data-tab="howto" onclick="showPanel('howto',this)">How to Use</button>
+    <button class="nav-tab" data-tab="logs" onclick="showPanel('logs',this)">Request Logs</button>
   </nav>
 
   <!-- Overview Panel -->
@@ -682,34 +682,6 @@
     </div>
   </div>
 
-  <!-- Client Keys Panel -->
-  <div id="panel-client-keys" class="panel">
-    <div id="generatedClientKey" class="key-alert"></div>
-    <div class="section-box">
-      <h2 class="section-title">Generate Client Key</h2>
-      <p class="section-desc">Generate an API key for any app or service. Every key keeps a Copy button so you can grab it again anytime.</p>
-      <form id="clientKeyForm" class="form-flex">
-        <div class="field-col">
-          <label class="field-label">Key Label / Service Name</label>
-          <input type="text" name="label" class="form-input" placeholder="Optional — auto-generated if empty">
-        </div>
-        <button type="submit" class="btn-primary">Generate Key</button>
-      </form>
-    </div>
-    <div class="section-box">
-      <h2 class="section-title">Active Client Keys</h2>
-      <p class="section-desc">Keys stay saved on the server so every row keeps a working Copy button — but anyone with dashboard access can retrieve them, so protect this admin account.</p>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr><th>Label</th><th>Key Prefix</th><th>Actions</th></tr>
-          </thead>
-          <tbody id="clientKeysTbody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
   <!-- Gemini Keys Panel -->
   <div id="panel-gemini-keys" class="panel">
     <div class="section-box">
@@ -740,34 +712,30 @@
     </div>
   </div>
 
-  <!-- Request Logs Panel -->
-  <div id="panel-logs" class="panel">
+  <!-- Client Keys Panel -->
+  <div id="panel-client-keys" class="panel">
+    <div id="generatedClientKey" class="key-alert"></div>
     <div class="section-box">
-      <h2 class="section-title">Request Logs</h2>
-      <p class="section-desc">Every generateContent attempt with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-        <select id="logModel" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All models</option></select>
-        <select id="logResult" class="form-input" style="width:auto" onchange="loadLogs()">
-          <option value="">All results</option>
-          <option value="success">Success</option>
-          <option value="failed">Failed</option>
-          <option value="rejected">Rejected</option>
-        </select>
-        <input id="logSearch" class="form-input" style="flex:1;min-width:160px" placeholder="Search model, key label, status code..." oninput="clearTimeout(window.__logTimer);window.__logTimer=setTimeout(loadLogs,300)">
-        <button type="button" class="btn-primary" onclick="loadLogs()">Refresh</button>
-      </div>
+      <h2 class="section-title">Generate Client Key</h2>
+      <p class="section-desc">Generate an API key for any app or service. Every key keeps a Copy button so you can grab it again anytime.</p>
+      <form id="clientKeyForm" class="form-flex">
+        <div class="field-col">
+          <label class="field-label">Key Label / Service Name</label>
+          <input type="text" name="label" class="form-input" placeholder="Optional — auto-generated if empty">
+        </div>
+        <button type="submit" class="btn-primary">Generate Key</button>
+      </form>
+    </div>
+    <div class="section-box">
+      <h2 class="section-title">Active Client Keys</h2>
+      <p class="section-desc">Keys stay saved on the server so every row keeps a working Copy button — but anyone with dashboard access can retrieve them, so protect this admin account.</p>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Time</th><th>Model</th><th>Key</th><th>Attempt</th><th>Result</th></tr></thead>
-          <tbody id="logsTbody"><tr><td colspan="5" class="empty-notice">No log entries yet.</td></tr></tbody>
+          <thead>
+            <tr><th>Label</th><th>Key Prefix</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="clientKeysTbody"></tbody>
         </table>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text-muted)">
-        <span id="logMeta"></span>
-        <span style="display:flex;gap:8px">
-          <button type="button" class="btn-tbl" id="logsNewerBtn" onclick="logsPage(-1)" style="display:none">&larr; Newer</button>
-          <button type="button" class="btn-tbl" id="logsOlderBtn" onclick="logsPage(1)" style="display:none">Older &rarr;</button>
-        </span>
       </div>
     </div>
   </div>
@@ -865,6 +833,38 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
         </table>
       </div>
       <p class="section-desc" style="margin-top:12px">Tip: when a key hits a limit or an outage, the proxy already retries the request on another key before answering.</p>
+    </div>
+  </div>
+
+  <!-- Request Logs Panel -->
+  <div id="panel-logs" class="panel">
+    <div class="section-box">
+      <h2 class="section-title">Request Logs</h2>
+      <p class="section-desc">Every generateContent attempt with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <select id="logModel" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All models</option></select>
+        <select id="logResult" class="form-input" style="width:auto" onchange="loadLogs()">
+          <option value="">All results</option>
+          <option value="success">Success</option>
+          <option value="failed">Failed</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <input id="logSearch" class="form-input" style="flex:1;min-width:160px" placeholder="Search model, key label, status code..." oninput="clearTimeout(window.__logTimer);window.__logTimer=setTimeout(loadLogs,300)">
+        <button type="button" class="btn-primary" onclick="loadLogs()">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Time</th><th>Model</th><th>Key</th><th>Attempt</th><th>Result</th></tr></thead>
+          <tbody id="logsTbody"><tr><td colspan="5" class="empty-notice">No log entries yet.</td></tr></tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text-muted)">
+        <span id="logMeta"></span>
+        <span style="display:flex;gap:8px">
+          <button type="button" class="btn-tbl" id="logsNewerBtn" onclick="logsPage(-1)" style="display:none">&larr; Newer</button>
+          <button type="button" class="btn-tbl" id="logsOlderBtn" onclick="logsPage(1)" style="display:none">Older &rarr;</button>
+        </span>
+      </div>
     </div>
   </div>
 
@@ -1224,7 +1224,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   }
 
   function showPanel(name, tabEl, updateHash = true) {
-    const validTabs = ['overview', 'client-keys', 'gemini-keys', 'logs', 'howto'];
+    const validTabs = ['overview', 'gemini-keys', 'client-keys', 'howto', 'logs'];
     if (!validTabs.includes(name)) name = 'overview';
 
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
