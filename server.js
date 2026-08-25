@@ -501,6 +501,13 @@ function upstreamRetryAfterSeconds(result) {
   } catch { return null; }
 }
 
+function hasQuotaDetails(result) {
+  try {
+    const error = JSON.parse(result.body.toString("utf8")).error || {};
+    return JSON.stringify(error.details || []).includes("quotaId");
+  } catch { return false; }
+}
+
 function syncModelsFromGemini(result) {
   let payload;
   try { payload = JSON.parse(result.body.toString("utf8")); } catch { return false; }
@@ -710,9 +717,10 @@ async function handleGemini(request, response, model) {
         continue;
       } else if (classification === "transient" || classification === "invalid_key") {
         const retrySeconds = classification === "invalid_key" ? TRANSIENT_COOLDOWN_SECONDS : (upstreamRetryAfterSeconds(result) || TRANSIENT_COOLDOWN_SECONDS);
-        setCooldown(model, selected.id, retrySeconds, classification === "invalid_key" ? "invalid_key" : "high_demand");
-        log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}) on ${model}; cooldown ${retrySeconds}s`);
-        mark("cooldown", `key #${selected.id} benched ${retrySeconds}s (${classification === "invalid_key" ? "invalid_key" : "high_demand"}); trying next key`);
+        const reason = classification === "invalid_key" ? "invalid_key" : (hasQuotaDetails(result) ? "high_demand" : "capacity");
+        setCooldown(model, selected.id, retrySeconds, reason);
+        log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}/${reason}) on ${model}; cooldown ${retrySeconds}s`);
+        mark("cooldown", `key #${selected.id} benched ${retrySeconds}s (${reason}); trying next key`);
         continue;
       }
       dbg("Gemini", `[${short}] ${model}: key #${selected.id} succeeded with ${result.status}; returning upstream response to client`);
