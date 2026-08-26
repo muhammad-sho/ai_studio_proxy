@@ -149,10 +149,10 @@ Open `http://YOUR_SERVER_IP:9009` and sign in. The dashboard has five tabs:
 | Tab | What it does |
 | --- | --- |
 | **Overview & Usage** | Totals (client keys, Gemini keys, models, requests today), reset schedule, model sync time, plus the per model/key usage table with cooldown states |
-| **Gemini API Keys** | Add and remove your Google Gemini keys |
-| **Client Keys** | Generate and manage the API keys your applications use |
-| **How to Use** | Copy-paste API examples for calling the proxy |
-| **Statistics & Logs** | Two views: Analytics (calendar-month totals and matrices per client key, Gemini key and model, with failure reasons) and Request Logs (detailed 7-day debugging log with payload inspection) |
+| **Gemini API Keys** | Add and remove your Google Gemini keys; per-key request totals and a key × model usage matrix for the selected period |
+| **Client Keys** | Generate and manage the API keys your applications use; per-key request totals and a client key × model usage matrix for the selected period |
+| **Request Logs** | Every generateContent request with time, model, key, attempt number, and result. Filter by model/result or search; click a row to inspect the exact request/response payloads (API keys masked) — retained for max 7 days / 1,000 entries |
+| **Statistics** | Requests, success rates and failure reasons per model for the selected period (today, last 7/30 days, a specific month, or all time) |
 
 Add your Google keys through the dashboard instead of pasting them directly
 into your applications or workflows.

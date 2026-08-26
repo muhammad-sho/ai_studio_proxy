@@ -333,6 +333,16 @@ function pacificMonthString(now = Date.now()) {
   return `${values.year}-${values.month}`;
 }
 
+function laDayStartUtcOfDaysAgo(days) {
+  return laDayStartUtc(...(function () {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date(Date.now() - days * 24 * 60 * 60 * 1000));
+    const v = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    return [Number(v.year), Number(v.month) - 1, Number(v.day)];
+  })());
+}
+
 function pacificMonthRange(month) {
   const [year, month1] = month.split("-").map(Number);
   const start = laDayStartUtc(year, month1 - 1, 1);
@@ -900,26 +910,31 @@ async function handleRequest(request, response) {
     return json(response, 200, entry);
   }
   if (url.pathname === "/api/admin/usage" && request.method === "GET") {
+    const period = url.searchParams.get("period") || "30d";
     const monthParam = url.searchParams.get("month") || "";
-    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam) ? monthParam : pacificMonthString();
-    const [start, end] = pacificMonthRange(month);
-    const range = prep("SELECT MIN(created_at) AS lo, MAX(created_at) AS hi FROM usage").get();
-    const months = [];
-    if (range.lo && range.hi) {
-      let cursor = range.hi;
-      while (cursor >= range.lo && months.length < 36) {
-        const label = pacificMonthString(cursor);
-        if (!months.includes(label)) months.push(label);
-        const [y, m1] = label.split("-").map(Number);
-        cursor = laDayStartUtc(m1 === 1 ? y - 1 : y, m1 === 1 ? 11 : m1 - 2, 1);
-      }
+    let start = 0;
+    let end = Number.MAX_SAFE_INTEGER;
+    let scope;
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam)) {
+      [start, end] = pacificMonthRange(monthParam);
+      scope = `month ${monthParam}`;
+    } else if (period === "today") {
+      start = pacificDayStart();
+      scope = "today (Pacific)";
+    } else if (period === "7d") {
+      start = laDayStartUtcOfDaysAgo(7);
+      scope = "last 7 days";
+    } else if (period === "30d") {
+      start = laDayStartUtcOfDaysAgo(30);
+      scope = "last 30 days";
+    } else {
+      scope = "all time";
     }
-    if (!months.includes(month)) months.unshift(month);
-    const clients = prep(`SELECT COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
+    const clients = prep(`SELECT u.client_key_id AS id, COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
         COUNT(*) AS total, SUM(u.ok) AS success, COUNT(*) - SUM(u.ok) AS failed
       FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
       WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id ORDER BY total DESC`).all(start, end);
-    const keys = prep(`SELECT COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
+    const keys = prep(`SELECT u.gemini_key_id AS id, COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
         COUNT(*) AS total, SUM(u.ok) AS success, COUNT(*) - SUM(u.ok) AS failed
       FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
       WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id ORDER BY total DESC`).all(start, end);
@@ -935,15 +950,7 @@ async function handleRequest(request, response) {
       WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id, u.model ORDER BY total DESC`).all(start, end);
     const failures_model = prep(`SELECT model, IFNULL(error_code, 'unknown') AS code, COUNT(*) AS n
       FROM usage WHERE ok = 0 AND created_at >= ? AND created_at < ? GROUP BY model, error_code ORDER BY n DESC`).all(start, end);
-    const failures_client = prep(`SELECT COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
-        IFNULL(u.error_code, 'unknown') AS code, COUNT(*) AS n
-      FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
-      WHERE u.ok = 0 AND u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id, u.error_code ORDER BY n DESC`).all(start, end);
-    const failures_gemini = prep(`SELECT COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
-        IFNULL(u.error_code, 'unknown') AS code, COUNT(*) AS n
-      FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
-      WHERE u.ok = 0 AND u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id, u.error_code ORDER BY n DESC`).all(start, end);
-    return json(response, 200, { month, months, clients, keys, models, matrix_client, matrix_gemini, failures_model, failures_client, failures_gemini });
+    return json(response, 200, { period: scope, clients, keys, models, matrix_client, matrix_gemini, failures_model });
   }
 
   if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
