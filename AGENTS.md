@@ -39,6 +39,16 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 - `maskSecrets()` caches key→mask pairs; invalidate via `invalidateSecretMaskCache()` wherever keys are inserted/deleted.
 - Cookie names (`ai_studio_proxy_dashboard`/`_csrf`) and localStorage keys (`ai_studio_proxy_*`) are load-bearing identifiers renamed during the project rebrand — renaming them logs users out.
 
+## Stability policy (real users are live)
+
+The app is past initial testing and running for real users. Every change must be non-destructive: never break the app's availability and never lose or corrupt existing data.
+
+- Data migrations must be automatic, guarded, and idempotent (see `entrypoint.sh`: rename-only-if-target-missing). Never delete or overwrite user data; move it.
+- Schema changes are additive only (see Behavior contracts); new code must keep working against databases created by older versions.
+- Preserve env var names, defaults, cookie/localStorage names, API routes and response shapes — deprecate instead of removing; breaking renames need explicit owner approval.
+- Before pushing anything that touches storage or startup, test the upgrade path with a database/files laid out like an existing deployment (old filenames, populated tables), not just a fresh install.
+- If a change can't be made non-destructively, stop and ask the owner first.
+
 ## Naming & docs conventions
 
 - Repo is `ai_studio_proxy` (underscores); Docker image/service/container are `ai-studio-proxy` (hyphens); internal identifiers use underscores. Default port is 9009.
