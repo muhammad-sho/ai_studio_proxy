@@ -249,7 +249,9 @@ function recordLoginFailure(address) {
   loginFailures.push(Date.now());
 }
 
+const allowedLabelTables = new Set(["client_keys", "api_keys"]);
 function nextAutoLabel(table, prefix) {
+  if (!allowedLabelTables.has(table)) throw new Error("invalid table for auto-label");
   let max = 0;
   for (const row of db.prepare(`SELECT label FROM ${table}`).all()) {
     const match = String(row.label).match(`^${prefix}(\\d+)$`);
@@ -500,7 +502,7 @@ function forwardToGemini(context, body, key, opts = {}) {
     if (upstreamUrl.searchParams.has("key")) upstreamUrl.searchParams.set("key", key);
     const droppedHeaders = new Set(["host", "connection", "keep-alive", "transfer-encoding", "upgrade",
       "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer",
-      "authorization", "cookie", "content-length", "x-goog-api-key"]);
+      "authorization", "cookie", "content-length", "x-goog-api-key", "x-proxy-api-key"]);
     const headers = {};
     for (const [name, value] of Object.entries(context.headers || {})) {
       const lower = name.toLowerCase();
@@ -780,7 +782,10 @@ async function handleGeminiPassthrough(request, response, model, action) {
       recordUsageRow(statsModelName(model, action, requestPath(request)), clientKey.id, selected.id, "success", true, result.status, null);
       let captured = 0;
       const capturedChunks = [];
+      let finalized = false;
       const finalize = () => {
+        if (finalized) return;
+        finalized = true;
         recordLog({
           model: statsModelName(model, action, requestPath(request)), traceId, events,
           keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
@@ -993,7 +998,7 @@ async function handleRequest(request, response) {
     const params = [];
     if (model) { where.push("model = ?"); params.push(model); }
     if (outcome) { where.push("outcome = ?"); params.push(outcome); }
-    if (q) { where.push("(model LIKE ? OR IFNULL(key_label,'') LIKE ? OR IFNULL(error_code,'') LIKE ? OR IFNULL(CAST(status AS TEXT),'') LIKE ?)"); const like = `%${q}%`; params.push(like, like, like, like); }
+    if (q) { where.push("(model LIKE ? ESCAPE '\\' OR IFNULL(key_label,'') LIKE ? ESCAPE '\\' OR IFNULL(error_code,'') LIKE ? ESCAPE '\\' OR IFNULL(CAST(status AS TEXT),'') LIKE ? ESCAPE '\\')"); const like = `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`; params.push(like, like, like, like); }
     const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
     const logs = db.prepare(`SELECT id, created_at, model, key_label, key_masked, status, outcome, error_code, attempt, trace_id FROM request_logs${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
     const total = db.prepare(`SELECT COUNT(*) AS c FROM request_logs${whereSql}`).get(...params).c;
