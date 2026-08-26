@@ -833,7 +833,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           </tbody>
         </table>
       </div>
-      <p class="section-desc" style="margin-top:12px">If a key is rate-limited or unavailable, the request is automatically retried on another key.</p>
+      <p class="section-desc" style="margin-top:12px">If a key is rate-limited or unavailable, its response is returned as received and the key is benched so later requests use a healthier one.</p>
     </div>
   </div>
 
@@ -1171,9 +1171,6 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     upstream: { label: 'response', tone: 'tl-warn' },
     result:   { label: 'outcome',  tone: '' },
     cooldown: { label: 'cooldown', tone: 'tl-warn' },
-    wait:     { label: 'pause',     tone: '' },
-    cap:      { label: 'cap',       tone: 'tl-warn' },
-    budget:   { label: 'budget',   tone: 'tl-warn' },
     transport:{ label: 'transport',tone: 'tl-bad' },
     relay:    { label: 'relayed',  tone: 'tl-good' },
     abort:    { label: 'aborted',  tone: 'tl-bad' },

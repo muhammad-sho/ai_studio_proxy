@@ -11,11 +11,8 @@ const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
 const TRANSIENT_COOLDOWN_SECONDS = 60;
-const ATTEMPT_DELAY_MS = Math.max(0, Number(process.env.ATTEMPT_DELAY_MS ?? 5000));
-const KEY_FALLBACK_ATTEMPTS = Math.max(1, Number(process.env.KEY_FALLBACK_ATTEMPTS || 2));
 const LOG_BODY_MAX_BYTES = Math.max(1024, Number(process.env.LOG_BODY_MAX_BYTES || 64 * 1024));
 const MAX_LOG_ENTRIES = Math.max(50, Number(process.env.MAX_LOG_ENTRIES || 1000));
-const KEY_LOOP_DEADLINE_MS = Number(process.env.KEY_LOOP_DEADLINE_MS || 0) || REQUEST_TIMEOUT_MS;
 const MODELS_CACHE_TTL_MS = Number(process.env.MODELS_CACHE_TTL_HOURS || 24) * 60 * 60 * 1000;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const sessions = new Map();
@@ -509,7 +506,6 @@ function classifyUpstream(result) {
   return "permanent";
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function hasQuotaDetails(result) {
   try {
@@ -680,107 +676,61 @@ async function handleGemini(request, response, model) {
   const readyCount = everyKey.filter((key) => key.rank === 0).length;
   dbg("Gemini", `[${short}] ${model}: ${readyCount} ready key(s), ${everyKey.length - readyCount} cooling down`);
   dbg("Gemini", `[${short}] ${model}: preference order ${everyKey.map((key) => `#${key.id}(${maskKey(key.api_key)}${key.rank === 1 ? `, ${key.reason}, ~${Math.max(0, Math.ceil((key.until - Date.now()) / 1000))}s left` : ""})`).join(" -> ")}`);
-  mark("pool", `${everyKey.length} Gemini key(s); ready now: ${readyCount}; attempt cap ${KEY_FALLBACK_ATTEMPTS}`);
+  mark("pool", `${everyKey.length} Gemini key(s); ready now: ${readyCount}`);
   mark("order", `preference ${everyKey.map((key) => `#${key.id}${key.rank === 1 ? ` (cooling: ${key.reason})` : ""}`).join(" > ")}`);
-  let lastResult;
-  let lastKey;
-  let attempt = 0;
-  const loopStartedAt = Date.now();
+  const selected = everyKey[0];
   const upstreamContext = { url: request.url, method: request.method, headers: request.headers };
-  for (const selected of everyKey) {
-    if (attempt >= KEY_FALLBACK_ATTEMPTS) {
-      log("info", "Gemini", `[${short}] ${model}: reached attempt cap (${KEY_FALLBACK_ATTEMPTS}); relaying last upstream response to client`);
-      mark("cap", `attempt cap of ${KEY_FALLBACK_ATTEMPTS} reached; stopping key loop`);
-      break;
-    }
-    if (attempt >= 1) {
-      mark("wait", `pausing ${ATTEMPT_DELAY_MS}ms before next attempt`);
-      await sleep(ATTEMPT_DELAY_MS);
-    }
-    if (response.writableEnded || response.destroyed) {
-      log("warn", "Gemini", `[${short}] ${model}: client disconnected before all attempts finished`);
-      mark("abort", "client disconnected mid-request");
-      recordLog({ model, traceId, events, attempt, status: null, outcome: "aborted" });
-      return;
-    }
-    attempt += 1;
-    const elapsed = Date.now() - loopStartedAt;
-    if (elapsed >= KEY_LOOP_DEADLINE_MS) {
-      log("warn", "Gemini", `[${short}] ${model}: key loop budget ${KEY_LOOP_DEADLINE_MS}ms exhausted after ${attempt - 1} attempt(s); stopping`);
-      mark("budget", `${KEY_LOOP_DEADLINE_MS}ms key-loop budget exhausted after ${attempt - 1} attempt(s)`);
-      break;
-    }
-    if (selected.rank === 1) {
-      log("warn", "Gemini", `[${short}] ${model}: no ready key left in cap; using cooling-down key #${selected.id} (${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left)`);
-    }
-    log("info", "Gemini", `[${short}] ${model}: attempt ${attempt}/${Math.min(everyKey.length, KEY_FALLBACK_ATTEMPTS)} using key #${selected.id} ${maskKey(selected.api_key)}`);
-    mark("select", `attempt ${attempt}/${Math.min(everyKey.length, KEY_FALLBACK_ATTEMPTS)} -> key #${selected.id} "${selected.label}" ${maskKey(selected.api_key)} (${selected.rank === 1 ? `cooling: ${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left` : "ready"}; ${usage.get(selected.id) || 0} success(es) today on this model)`);
-    const callStartedAt = Date.now();
-    try {
-      const result = await forwardToGemini(upstreamContext, body, selected.api_key, { timeoutMs: KEY_LOOP_DEADLINE_MS - elapsed, clientResponse: response, traceId });
-      lastResult = result;
-      lastKey = selected;
-      recordRequest(model, selected.id, result.status);
-      const code = result.status >= 200 && result.status < 300 ? null : upstreamErrorCode(result);
-      mark("result", `key #${selected.id} <- Google responded ${result.status}${code ? ` (${code})` : ""} in ${Date.now() - callStartedAt}ms`);
-      if (code) mark("upstream", `Google's response for key #${selected.id}, verbatim: ${clipBody(result.body)}`);
-      const classification = classifyUpstream(result);
-      if (classification === "daily_quota") {
-        setCooldownUntil(model, selected.id, nextPacificReset(), "daily_quota");
-        log("warn", "Gemini", `[${short}] key #${selected.id} hit daily quota on ${model}; cooldown until Pacific midnight`);
-        mark("cooldown", `key #${selected.id} benched until Pacific midnight (daily_quota)`);
-        continue;
-      } else if (classification === "transient" || classification === "invalid_key") {
-        const reason = classification === "invalid_key" ? "invalid_key" : (hasQuotaDetails(result) ? "high_demand" : "capacity");
-        setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, reason);
-        log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}/${reason}) on ${model}; cooldown ${TRANSIENT_COOLDOWN_SECONDS}s`);
-        mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (${reason}); trying next key`);
-        continue;
-      }
-      dbg("Gemini", `[${short}] ${model}: key #${selected.id} succeeded with ${result.status}; returning upstream response to client`);
-      mark("relay", `relaying Google's response as-is to the client (status ${result.status}, attempt ${attempt})`);
-      recordLog({
-        model, traceId, events,
-        keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
-        status: result.status,
-        outcome: result.status >= 200 && result.status < 300 ? "success" : "failed",
-        errorCode: code, attempt, requestBody: body, responseBody: result.body
-      });
-      recordModelStat(model, result.status, result.body);
-      return returnUpstream(response, result);
-    } catch (error) {
-      log("warn", "Gemini", `[${short}] key #${selected.id} transport failure on ${model}: ${error.message}`);
-      mark("transport", `key #${selected.id} transport failure after ${Date.now() - callStartedAt}ms: ${error.message}`);
-      setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, "upstream_error");
-      mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (upstream_error)`);
-      if (response.writableEnded || response.destroyed) {
-        mark("abort", "client disconnected during attempts");
-        recordLog({
-          model, traceId, events, attempt,
-          keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
-          status: null, outcome: "aborted", errorCode: `transport: ${error.message}`.slice(0, 160), requestBody: body
-        });
-        return;
-      }
-    }
+  if (selected.rank === 1) {
+    log("warn", "Gemini", `[${short}] ${model}: all keys are cooling down; using key #${selected.id} (${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left)`);
   }
-  if (lastResult) {
-    log("info", "Gemini", `[${short}] ${model}: relaying Google's response as-is after ${attempt} attempt(s): status ${lastResult.status}`);
-    mark("relay", `no key succeeded within the cap; relaying last Google response as-is (status ${lastResult.status})`);
+  log("info", "Gemini", `[${short}] ${model}: using key #${selected.id} ${maskKey(selected.api_key)}`);
+  mark("select", `key #${selected.id} "${selected.label}" ${maskKey(selected.api_key)} (${selected.rank === 1 ? `cooling: ${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left` : "ready"}; ${usage.get(selected.id) || 0} success(es) today on this model)`);
+  const callStartedAt = Date.now();
+  try {
+    const result = await forwardToGemini(upstreamContext, body, selected.api_key, { clientResponse: response, traceId });
+    recordRequest(model, selected.id, result.status);
+    const code = result.status >= 200 && result.status < 300 ? null : upstreamErrorCode(result);
+    mark("result", `key #${selected.id} <- Google responded ${result.status}${code ? ` (${code})` : ""} in ${Date.now() - callStartedAt}ms`);
+    if (code) mark("upstream", `Google's response for key #${selected.id}, verbatim: ${clipBody(result.body)}`);
+    const classification = classifyUpstream(result);
+    if (classification === "daily_quota") {
+      setCooldownUntil(model, selected.id, nextPacificReset(), "daily_quota");
+      log("warn", "Gemini", `[${short}] key #${selected.id} hit daily quota on ${model}; cooldown until Pacific midnight`);
+      mark("cooldown", `key #${selected.id} benched until Pacific midnight (daily_quota)`);
+    } else if (classification === "transient" || classification === "invalid_key") {
+      const reason = classification === "invalid_key" ? "invalid_key" : (hasQuotaDetails(result) ? "high_demand" : "capacity");
+      setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, reason);
+      log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}/${reason}) on ${model}; cooldown ${TRANSIENT_COOLDOWN_SECONDS}s`);
+      mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (${reason})`);
+    }
+    mark("relay", `relaying Google's response as-is to the client (status ${result.status})`);
     recordLog({
       model, traceId, events,
-      keyId: lastKey.id, keyLabel: lastKey.label, keyMasked: maskKey(lastKey.api_key),
-      status: lastResult.status,
-      outcome: lastResult.status >= 200 && lastResult.status < 300 ? "success" : "failed",
-      errorCode: lastResult.status >= 200 && lastResult.status < 300 ? null : upstreamErrorCode(lastResult),
-      attempt, requestBody: body, responseBody: lastResult.body
+      keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
+      status: result.status,
+      outcome: result.status >= 200 && result.status < 300 ? "success" : "failed",
+      errorCode: code, attempt: 1, requestBody: body, responseBody: result.body
     });
-    recordModelStat(model, lastResult.status, lastResult.body);
-    return returnUpstream(response, lastResult);
+    recordModelStat(model, result.status, result.body);
+    return returnUpstream(response, result);
+  } catch (error) {
+    log("warn", "Gemini", `[${short}] key #${selected.id} transport failure on ${model}: ${error.message}`);
+    mark("transport", `key #${selected.id} transport failure after ${Date.now() - callStartedAt}ms: ${error.message}`);
+    setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, "upstream_error");
+    mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (upstream_error)`);
+    if (response.writableEnded || response.destroyed) {
+      mark("abort", "client disconnected during the request");
+      recordLog({
+        model, traceId, events, attempt: 1,
+        keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
+        status: null, outcome: "aborted", errorCode: `transport: ${error.message}`.slice(0, 160), requestBody: body
+      });
+      return;
+    }
   }
-  log("error", "Gemini", `[${short}] ${model}: ${attempt} attempt(s) failed without any upstream response`);
-  mark("fail", "Google never responded on any attempted key; proxy generated a 502");
-  recordLog({ model, traceId, events, status: 502, outcome: "failed", errorCode: "NO_UPSTREAM_RESPONSE", attempt, requestBody: body });
+  log("error", "Gemini", `[${short}] ${model}: no upstream response`);
+  mark("fail", "Google did not respond; proxy generated a 502");
+  recordLog({ model, traceId, events, status: 502, outcome: "failed", errorCode: "NO_UPSTREAM_RESPONSE", attempt: 1, requestBody: body });
   recordModelStat(model, 502, Buffer.from("{}"));
   return json(response, 502, { error: { code: 502, status: "BAD_GATEWAY", message: "Gemini did not respond on any attempted key" } });
 }

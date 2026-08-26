@@ -28,12 +28,13 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 
 - **cwd matters**: `server.js` reads `dashboard.html` relative to the working directory. Running `node server.js` from anywhere else crashes at boot. Docker sets WORKDIR /app, so only affects local runs.
 - To simulate upstream failures, append `127.0.0.1 generativelanguage.googleapis.com` to `/etc/hosts`, and remove it afterwards (verify with `rg googleapis /etc/hosts`). Node's keep-alive agent reuses sockets, so DNS tricks don't affect requests already warmed in the same process — restart the server after changing hosts. Permanent-looking 400s from "Google" during such tests mean the blackhole didn't apply.
-- Invalid Gemini API keys get a real Google `400 INVALID_ARGUMENT` (classified permanent, relayed after one attempt). Only 429/5xx/transport errors trigger retry/cooldown paths.
+- Invalid Gemini API keys get a real Google `400 INVALID_ARGUMENT` (classified permanent, returned as-is). 429/5xx/transport errors trigger cooldowns; there is no retry — every request is attempted once.
 - `.gitignore` covers `*.db*` — never commit databases; use `/tmp` for test DBs.
 
 ## Behavior contracts
 
-- Cooldowns have exactly two cases: transient failures bench a key 60 s (`TRANSIENT_COOLDOWN_SECONDS`), daily-quota benches until Pacific midnight. Retries pause `ATTEMPT_DELAY_MS` (default 5 s) between attempts. Don't reintroduce other cooldown sources without asking.
+- Every request is attempted exactly once on the best available key (least-used ready, else soonest-expiring cooldown); the upstream response is always relayed as-is. Do not reintroduce retry/fallback logic without asking.
+- Cooldowns have exactly two cases: transient failures bench a key 60 s (`TRANSIENT_COOLDOWN_SECONDS`), daily-quota benches until Pacific midnight. Don't reintroduce other cooldown sources without asking.
 - `model_stats` table is write-only observability (rolling 30-day prune); routing/cooldown logic must never read it.
 - Schema changes are additive `CREATE TABLE IF NOT EXISTS` only — legacy ALTER-migrations were deliberately removed; don't add migration shims.
 - `maskSecrets()` caches key→mask pairs; invalidate via `invalidateSecretMaskCache()` wherever keys are inserted/deleted.

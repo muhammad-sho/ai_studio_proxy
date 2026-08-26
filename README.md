@@ -6,7 +6,6 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 
 * Multiple Gemini API keys pooled behind one proxy endpoint
 * **Least-used key selection** — requests go to the key with the fewest successful requests for that model; if all keys are in cooldown, the one closest to expiry is used
-* Automatic retry on another key when one fails
 * Automatic cooldown when a key is overloaded or out of daily quota
 * Google's responses — successes and errors alike — are relayed to the client exactly as received
 * Per-key and per-model usage tracking in a web dashboard
@@ -233,9 +232,7 @@ picks another key, and retries:
 | Overload / rate-limit / server errors (408, 429, 5xx) | 60 seconds |
 | Daily quota exceeded | Until Gemini's next midnight Pacific reset |
 
-Retries on another key pause 5 seconds between attempts (`ATTEMPT_DELAY_MS`).
-
-This prevents a temporarily limited key from repeatedly receiving requests.
+This prevents a temporarily limited key from repeatedly receiving requests. Each request is sent once; the response is returned exactly as received, success or failure.
 
 ---
 
@@ -295,11 +292,8 @@ dashboard setup. Add these to the `environment:` section of
 | `PORT` | `9009` | Port the proxy listens on |
 | `DB_PATH` | `/data/ai-studio-proxy.db` | SQLite database location inside the container |
 | `DEBUG` | unset | Set to `1` for extra per-attempt debug logging |
-| `ATTEMPT_DELAY_MS` | `5000` | Pause between retry attempts on different Gemini keys |
 | `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
-| `KEY_LOOP_DEADLINE_MS` | same as `REQUEST_TIMEOUT_MS` | Total time budget for trying keys one-by-one on a failed request before giving up |
-| `KEY_FALLBACK_ATTEMPTS` | `2` | How many different Gemini keys a single request may try before Google's last response is relayed to the client exactly as received |
 | `MAX_LOG_ENTRIES` | `1000` | Maximum request-log entries kept in the database (oldest pruned automatically) |
 | `LOG_BODY_MAX_BYTES` | `65536` | Per side (request/response) payload size kept per log entry; larger payloads are truncated |
 | `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
@@ -383,8 +377,8 @@ so this only appears with an empty pool.
 
 ## Rate Limit Errors
 
-Check the dashboard for the affected model/key combination. The proxy already
-rotated to another available key when possible.
+Check the dashboard for the affected model/key combination. The failed key is
+benched so subsequent requests use a different one.
 
 ## Database Is Read-Only
 
