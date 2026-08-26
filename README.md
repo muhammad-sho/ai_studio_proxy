@@ -269,7 +269,7 @@ The proxy uses SQLite (stored at `./data/ai-studio-proxy.db` next to your
 * Client API keys
 * Gemini API keys
 * Usage records and cooldown state
-* Request logs (last 1,000 entries)
+* Request logs (max 1,000 entries and max 7 days — whichever trims first)
 * Per-model statistics (rolling 30 days)
 
 The directory is mounted as a bind mount by Docker Compose, survives restarts
@@ -294,7 +294,7 @@ dashboard setup. Add these to the `environment:` section of
 | `DEBUG` | unset | Set to `1` for extra per-attempt debug logging |
 | `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
-| `MAX_LOG_ENTRIES` | `1000` | Maximum request-log entries kept in the database (oldest pruned automatically) |
+| `MAX_LOG_ENTRIES` | `1000` | Maximum request-log entries kept in the database; entries older than 7 days are also removed (pruned hourly) |
 | `LOG_BODY_MAX_BYTES` | `65536` | Per side (request/response) payload size kept per log entry; larger payloads are truncated |
 | `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |

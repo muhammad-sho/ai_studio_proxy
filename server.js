@@ -376,6 +376,7 @@ function recordLog(entry) {
 }
 
 const MODEL_STATS_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const REQUEST_LOG_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 function recordModelStat(model, ok, status, errorCode) {
   try {
     prep("INSERT INTO model_stats (created_at,model,ok,status,error_code) VALUES (?,?,?,?,?)")
@@ -395,8 +396,9 @@ function sweepDailyReset() {
   const purgedRequests = prep("DELETE FROM requests WHERE created_at < ?").run(today).changes;
   const purgedCooldowns = prep("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now()).changes;
   const purgedLogs = prep("DELETE FROM request_logs WHERE id <= (SELECT id FROM request_logs ORDER BY id DESC LIMIT 1 OFFSET ?)").run(MAX_LOG_ENTRIES).changes;
+  const purgedAgedLogs = prep("DELETE FROM request_logs WHERE created_at < ?").run(Date.now() - REQUEST_LOG_RETENTION_MS).changes;
   const purgedStats = prep("DELETE FROM model_stats WHERE created_at < ?").run(Date.now() - MODEL_STATS_RETENTION_MS).changes;
-  if (purgedRequests || purgedCooldowns || purgedLogs || purgedStats) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s), ${purgedLogs} old log entr(ies), ${purgedStats} old model stat row(s)`);
+  if (purgedRequests || purgedCooldowns || purgedLogs || purgedAgedLogs || purgedStats) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s), ${purgedLogs} excess log entr(ies), ${purgedAgedLogs} aged log entr(ies), ${purgedStats} old model stat row(s)`);
 }
 
 function setCooldownUntil(model, keyId, timestamp, reason) {
