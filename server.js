@@ -45,7 +45,6 @@ db.exec(`
   PRAGMA synchronous = NORMAL;
   DROP TABLE IF EXISTS requests;
   DROP TABLE IF EXISTS model_stats;
-  DROP TABLE IF EXISTS request_logs;
   CREATE TABLE IF NOT EXISTS api_keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,
@@ -133,7 +132,7 @@ function securityHeaders(response) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, x-goog-api-key, x-goog-upload-offset, x-goog-upload-command, x-goog-upload-protocol, x-goog-upload-header-content-length, x-goog-upload-header-content-type, x-goog-upload-status");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, x-goog-api-key, x-proxy-api-key, x-goog-upload-offset, x-goog-upload-command, x-goog-upload-protocol, x-goog-upload-header-content-length, x-goog-upload-header-content-type, x-goog-upload-status");
   response.setHeader("Access-Control-Max-Age", "86400");
 }
 
@@ -998,7 +997,7 @@ async function handleRequest(request, response) {
     const params = [];
     if (model) { where.push("model = ?"); params.push(model); }
     if (outcome) { where.push("outcome = ?"); params.push(outcome); }
-    if (q) { where.push("(model LIKE ? ESCAPE '\\' OR IFNULL(key_label,'') LIKE ? ESCAPE '\\' OR IFNULL(error_code,'') LIKE ? ESCAPE '\\' OR IFNULL(CAST(status AS TEXT),'') LIKE ? ESCAPE '\\')"); const like = `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`; params.push(like, like, like, like); }
+    if (q) { where.push("(model LIKE ? ESCAPE '\\' OR IFNULL(key_label,'') LIKE ? ESCAPE '\\' OR IFNULL(error_code,'') LIKE ? ESCAPE '\\' OR IFNULL(CAST(status AS TEXT),'') LIKE ? ESCAPE '\\')"); const like = `%${q.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`; params.push(like, like, like, like); }
     const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
     const logs = db.prepare(`SELECT id, created_at, model, key_label, key_masked, status, outcome, error_code, attempt, trace_id FROM request_logs${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
     const total = db.prepare(`SELECT COUNT(*) AS c FROM request_logs${whereSql}`).get(...params).c;
