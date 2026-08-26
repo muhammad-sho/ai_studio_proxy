@@ -36,6 +36,7 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 - Every request is attempted exactly once on the best available key (least-used ready, else soonest-expiring cooldown); the upstream response is always relayed as-is. Do not reintroduce retry/fallback logic without asking.
 - Cooldowns have exactly two cases: transient failures bench a key 60 s (`TRANSIENT_COOLDOWN_SECONDS`), daily-quota benches until Pacific midnight. Don't reintroduce other cooldown sources without asking.
 - `model_stats` table is write-only observability (rolling 30-day prune); routing/cooldown logic must never read it.
+- Hot-path SQL goes through `prep(sql)`, which caches compiled statements — only for **fixed** SQL strings. Never pass dynamically interpolated SQL (filters, IN-lists) to `prep()`; that leaks memory. Terminal bookkeeping per request (usage insert, cooldown upsert, request log, model stat) runs in a single transaction.
 - Schema changes are additive `CREATE TABLE IF NOT EXISTS` only — legacy ALTER-migrations were deliberately removed; don't add migration shims.
 - `maskSecrets()` caches key→mask pairs; invalidate via `invalidateSecretMaskCache()` wherever keys are inserted/deleted.
 - Cookie names (`ai_studio_proxy_dashboard`/`_csrf`) and localStorage keys (`ai_studio_proxy_*`) are load-bearing identifiers renamed during the project rebrand — renaming them logs users out.

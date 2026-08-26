@@ -32,6 +32,12 @@ const dbg = (category, message) => { if (DEBUG) log("debug", category, message);
 const maskKey = (key) => `${String(key || "").slice(0, 6)}...`;
 
 const db = new DatabaseSync(DB_PATH);
+const preparedStatements = new Map();
+function prep(sql) {
+  let stmt = preparedStatements.get(sql);
+  if (!stmt) preparedStatements.set(sql, (stmt = db.prepare(sql)));
+  return stmt;
+}
 try { fs.chmodSync(DB_PATH, 0o600); } catch {}
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -189,7 +195,7 @@ function localKeyIsValid(request) {
     request.headers["x-goog-api-key"] ||
     query.get("key") || "";
   if (!supplied) return false;
-  return Boolean(db.prepare("SELECT id FROM client_keys WHERE key_hash = ?").get(hashValue(supplied)));
+  return Boolean(prep("SELECT id FROM client_keys WHERE key_hash = ?").get(hashValue(supplied)));
 }
 
 function clientAddress(request) {
@@ -248,7 +254,7 @@ function nextAutoLabel(table, prefix) {
 }
 
 function hasAdmin() {
-  return Boolean(db.prepare("SELECT id FROM admin_users LIMIT 1").get());
+  return Boolean(prep("SELECT id FROM admin_users LIMIT 1").get());
 }
 
 function passwordDigest(password, salt) {
@@ -283,7 +289,7 @@ function modelNameFromPath(path) {
 }
 
 function poolKeys() {
-  return db.prepare("SELECT id, api_key FROM api_keys ORDER BY id").all();
+  return prep("SELECT id, api_key FROM api_keys ORDER BY id").all();
 }
 
 function setMeta(key, value) {
@@ -331,7 +337,7 @@ function usageStats() {
 
 function recordRequest(model, keyId, status) {
   if (status < 200 || status >= 300) return;
-  db.prepare("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, keyId, status, Date.now());
+  prep("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, keyId, status, Date.now());
 }
 
 let secretMaskCache = null;
@@ -339,8 +345,8 @@ function invalidateSecretMaskCache() { secretMaskCache = null; }
 function maskSecrets(text) {
   if (!secretMaskCache) {
     secretMaskCache = [];
-    for (const row of db.prepare("SELECT api_key FROM api_keys").all()) secretMaskCache.push([row.api_key, maskKey(row.api_key)]);
-    for (const row of db.prepare("SELECT key_text FROM client_keys WHERE key_text IS NOT NULL").all()) secretMaskCache.push([row.key_text, maskKey(row.key_text)]);
+    for (const row of prep("SELECT api_key FROM api_keys").all()) secretMaskCache.push([row.api_key, maskKey(row.api_key)]);
+    for (const row of prep("SELECT key_text FROM client_keys WHERE key_text IS NOT NULL").all()) secretMaskCache.push([row.key_text, maskKey(row.key_text)]);
   }
   let out = String(text);
   for (const [secret, masked] of secretMaskCache) out = out.split(secret).join(masked);
@@ -352,16 +358,17 @@ function clipBody(value) {
   return text.length > LOG_BODY_MAX_BYTES ? text.slice(0, LOG_BODY_MAX_BYTES) + "...[truncated]" : text;
 }
 
-function upstreamErrorCode(result) {
-  try {
-    const error = JSON.parse(result.body.toString("utf8")).error || {};
-    return String(error.status || error.code || error.message || "").slice(0, 120) || null;
-  } catch { return null; }
+function upstreamErrorPayload(body) {
+  try { return JSON.parse(body.toString("utf8")).error || {}; } catch { return null; }
+}
+function errorCodeFromPayload(error) {
+  if (!error) return null;
+  return String(error.status || error.code || error.message || "").slice(0, 120) || null;
 }
 
 function recordLog(entry) {
   try {
-    db.prepare("INSERT INTO request_logs (created_at,model,key_id,key_label,key_masked,status,outcome,error_code,attempt,trace_id,events,request_body,response_body) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    prep("INSERT INTO request_logs (created_at,model,key_id,key_label,key_masked,status,outcome,error_code,attempt,trace_id,events,request_body,response_body) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .run(Date.now(), entry.model, entry.keyId ?? null, entry.keyLabel ?? null, entry.keyMasked ?? null,
         entry.status ?? null, entry.outcome, entry.errorCode ? maskSecrets(String(entry.errorCode)) : null, entry.attempt ?? 0,
         entry.traceId ?? null,
@@ -374,12 +381,10 @@ function recordLog(entry) {
 }
 
 const MODEL_STATS_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-function recordModelStat(model, status, body) {
+function recordModelStat(model, ok, status, errorCode) {
   try {
-    const ok = status >= 200 && status < 300 ? 1 : 0;
-    const errorCode = ok ? null : (upstreamErrorCode({ body }) || `HTTP_${status ?? 0}`);
-    db.prepare("INSERT INTO model_stats (created_at,model,ok,status,error_code) VALUES (?,?,?,?,?)")
-      .run(Date.now(), model, ok, status ?? null, errorCode);
+    prep("INSERT INTO model_stats (created_at,model,ok,status,error_code) VALUES (?,?,?,?,?)")
+      .run(Date.now(), model, ok ? 1 : 0, status ?? null, errorCode);
   } catch (error) {
     log("error", "Stats", `failed to record model stat: ${error.message}`);
   }
@@ -392,15 +397,15 @@ function sweepDailyReset() {
     log("info", "Usage", "Pacific midnight reset - cleared previous day's usage and expired cooldowns");
   }
   lastSweptUsageDay = today;
-  const purgedRequests = db.prepare("DELETE FROM requests WHERE created_at < ?").run(today).changes;
-  const purgedCooldowns = db.prepare("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now()).changes;
-  const purgedLogs = db.prepare("DELETE FROM request_logs WHERE id <= (SELECT id FROM request_logs ORDER BY id DESC LIMIT 1 OFFSET ?)").run(MAX_LOG_ENTRIES).changes;
-  const purgedStats = db.prepare("DELETE FROM model_stats WHERE created_at < ?").run(Date.now() - MODEL_STATS_RETENTION_MS).changes;
+  const purgedRequests = prep("DELETE FROM requests WHERE created_at < ?").run(today).changes;
+  const purgedCooldowns = prep("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now()).changes;
+  const purgedLogs = prep("DELETE FROM request_logs WHERE id <= (SELECT id FROM request_logs ORDER BY id DESC LIMIT 1 OFFSET ?)").run(MAX_LOG_ENTRIES).changes;
+  const purgedStats = prep("DELETE FROM model_stats WHERE created_at < ?").run(Date.now() - MODEL_STATS_RETENTION_MS).changes;
   if (purgedRequests || purgedCooldowns || purgedLogs || purgedStats) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s), ${purgedLogs} old log entr(ies), ${purgedStats} old model stat row(s)`);
 }
 
 function setCooldownUntil(model, keyId, timestamp, reason) {
-  db.prepare("INSERT INTO model_key_state (model,key_id,cooldown_until,cooldown_reason) VALUES (?,?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,cooldown_reason=excluded.cooldown_reason")
+  prep("INSERT INTO model_key_state (model,key_id,cooldown_until,cooldown_reason) VALUES (?,?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,cooldown_reason=excluded.cooldown_reason")
     .run(model, keyId, timestamp, reason);
 }
 
@@ -410,11 +415,6 @@ function setCooldown(model, keyId, seconds, reason) {
 
 function nextPacificReset(now = Date.now()) {
   return pacificDayStart(pacificDayStart(now) + 36 * 60 * 60 * 1000);
-}
-
-function keyCooldown(model, keyId) {
-  const state = db.prepare("SELECT cooldown_until,cooldown_reason FROM model_key_state WHERE model = ? AND key_id = ?").get(model, keyId);
-  return state && state.cooldown_until > Date.now() ? state : null;
 }
 
 function forwardToGemini(context, body, key, opts = {}) {
@@ -495,23 +495,19 @@ function returnUpstream(response, result) {
   return response.end(result.body);
 }
 
-function classifyUpstream(result) {
-  let error = {};
-  try { error = JSON.parse(result.body.toString("utf8")).error || {}; } catch {}
+function classifyUpstream(status, error) {
+  error = error || {};
   const message = `${error.status || ""} ${error.code || ""} ${error.message || ""}`.toLowerCase();
-  if (message.includes("api_key_invalid") || message.includes("invalid api key") || result.status === 401) return "invalid_key";
+  if (message.includes("api_key_invalid") || message.includes("invalid api key") || status === 401) return "invalid_key";
   const detailsText = JSON.stringify(error.details || []).toLowerCase();
   if (/\b(per[_ ]?day|daily|requests per day|\brpd\b)\b/.test(message) || detailsText.includes("perday") || detailsText.includes("per_day")) return "daily_quota";
-  if ([408, 429, 500, 502, 503, 504].includes(result.status)) return "transient";
+  if ([408, 429, 500, 502, 503, 504].includes(status)) return "transient";
   return "permanent";
 }
 
 
-function hasQuotaDetails(result) {
-  try {
-    const error = JSON.parse(result.body.toString("utf8")).error || {};
-    return JSON.stringify(error.details || []).includes("quotaId");
-  } catch { return false; }
+function hasQuotaDetails(error) {
+  return error ? JSON.stringify(error.details || []).includes("quotaId") : false;
 }
 
 function syncModelsFromGemini(result) {
@@ -657,17 +653,19 @@ async function handleGemini(request, response, model) {
   }
   mark("body", `${Buffer.byteLength(body)} byte request body`);
 
-  const everyKey = db.prepare("SELECT * FROM api_keys ORDER BY id").all();
+  const everyKey = prep("SELECT * FROM api_keys ORDER BY id").all();
   if (!everyKey.length) {
     log("warn", "Gemini", `[${short}] ${model}: request rejected, no Gemini API keys configured`);
     mark("reject", "no Gemini API keys configured");
     recordLog({ model, traceId, events, status: 503, outcome: "rejected", errorCode: "NO_KEYS_CONFIGURED" });
     return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "No Gemini API keys are configured" } });
   }
-  const usage = db.prepare("SELECT key_id, COUNT(*) AS count FROM requests WHERE model = ? AND status >= 200 AND status < 300 AND created_at >= ? GROUP BY key_id")
+  const usage = prep("SELECT key_id, COUNT(*) AS count FROM requests WHERE model = ? AND status >= 200 AND status < 300 AND created_at >= ? GROUP BY key_id")
     .all(model, pacificDayStart()).reduce((map, row) => map.set(row.key_id, row.count), new Map());
+  const coolingRows = new Map(prep("SELECT key_id, cooldown_until, cooldown_reason FROM model_key_state WHERE model = ?")
+    .all(model).filter((row) => row.cooldown_until > Date.now()).map((row) => [row.key_id, row]));
   for (const key of everyKey) {
-    const cd = keyCooldown(model, key.id);
+    const cd = coolingRows.get(key.id);
     key.rank = cd ? 1 : 0;
     key.until = cd ? cd.cooldown_until : 0;
     key.reason = cd ? cd.cooldown_reason : null;
@@ -688,30 +686,45 @@ async function handleGemini(request, response, model) {
   const callStartedAt = Date.now();
   try {
     const result = await forwardToGemini(upstreamContext, body, selected.api_key, { clientResponse: response, traceId });
-    recordRequest(model, selected.id, result.status);
-    const code = result.status >= 200 && result.status < 300 ? null : upstreamErrorCode(result);
+    const ok = result.status >= 200 && result.status < 300;
+    const errorPayload = ok ? null : upstreamErrorPayload(result.body);
+    const code = ok ? null : errorCodeFromPayload(errorPayload);
     mark("result", `key #${selected.id} <- Google responded ${result.status}${code ? ` (${code})` : ""} in ${Date.now() - callStartedAt}ms`);
     if (code) mark("upstream", `Google's response for key #${selected.id}, verbatim: ${clipBody(result.body)}`);
-    const classification = classifyUpstream(result);
+    const classification = classifyUpstream(result.status, errorPayload);
+    let cooldownUntil = null;
+    let cooldownReason = null;
     if (classification === "daily_quota") {
-      setCooldownUntil(model, selected.id, nextPacificReset(), "daily_quota");
+      cooldownUntil = nextPacificReset();
+      cooldownReason = "daily_quota";
       log("warn", "Gemini", `[${short}] key #${selected.id} hit daily quota on ${model}; cooldown until Pacific midnight`);
       mark("cooldown", `key #${selected.id} benched until Pacific midnight (daily_quota)`);
     } else if (classification === "transient" || classification === "invalid_key") {
-      const reason = classification === "invalid_key" ? "invalid_key" : (hasQuotaDetails(result) ? "high_demand" : "capacity");
-      setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, reason);
+      const reason = classification === "invalid_key" ? "invalid_key" : (hasQuotaDetails(errorPayload) ? "high_demand" : "capacity");
+      cooldownUntil = Date.now() + TRANSIENT_COOLDOWN_SECONDS * 1000;
+      cooldownReason = reason;
       log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}/${reason}) on ${model}; cooldown ${TRANSIENT_COOLDOWN_SECONDS}s`);
       mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (${reason})`);
     }
     mark("relay", `relaying Google's response as-is to the client (status ${result.status})`);
-    recordLog({
-      model, traceId, events,
-      keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
-      status: result.status,
-      outcome: result.status >= 200 && result.status < 300 ? "success" : "failed",
-      errorCode: code, attempt: 1, requestBody: body, responseBody: result.body
-    });
-    recordModelStat(model, result.status, result.body);
+    try {
+      db.exec("BEGIN");
+      if (ok) prep("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, selected.id, result.status, Date.now());
+      if (cooldownUntil !== null) prep("INSERT INTO model_key_state (model,key_id,cooldown_until,cooldown_reason) VALUES (?,?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,cooldown_reason=excluded.cooldown_reason")
+        .run(model, selected.id, cooldownUntil, cooldownReason);
+      prep("INSERT INTO request_logs (created_at,model,key_id,key_label,key_masked,status,outcome,error_code,attempt,trace_id,events,request_body,response_body) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(Date.now(), model, selected.id, selected.label, maskKey(selected.api_key),
+          result.status,
+          ok ? "success" : "failed",
+          code ? maskSecrets(String(code)) : null, 1, traceId,
+          maskSecrets(JSON.stringify(events)),
+          maskSecrets(clipBody(body)), maskSecrets(clipBody(result.body)));
+      recordModelStat(model, ok, result.status, ok ? null : (code || `HTTP_${result.status}`));
+      db.exec("COMMIT");
+    } catch (txError) {
+      try { db.exec("ROLLBACK"); } catch {}
+      log("error", "Log", `failed to persist request bookkeeping: ${txError.message}`);
+    }
     return returnUpstream(response, result);
   } catch (error) {
     log("warn", "Gemini", `[${short}] key #${selected.id} transport failure on ${model}: ${error.message}`);
@@ -731,7 +744,7 @@ async function handleGemini(request, response, model) {
   log("error", "Gemini", `[${short}] ${model}: no upstream response`);
   mark("fail", "Google did not respond; proxy generated a 502");
   recordLog({ model, traceId, events, status: 502, outcome: "failed", errorCode: "NO_UPSTREAM_RESPONSE", attempt: 1, requestBody: body });
-  recordModelStat(model, 502, Buffer.from("{}"));
+  recordModelStat(model, false, 502, null);
   return json(response, 502, { error: { code: 502, status: "BAD_GATEWAY", message: "Gemini did not respond on any attempted key" } });
 }
 
@@ -831,10 +844,10 @@ async function handleRequest(request, response) {
     return json(response, 403, { error: "Invalid CSRF token" });
   }
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
-    const keys = db.prepare("SELECT id,label,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
-    const clientKeys = db.prepare("SELECT id,label,key_prefix AS masked FROM client_keys ORDER BY id").all();
-    const models = db.prepare("SELECT name FROM models ORDER BY name").all();
-    const cooldowns = db.prepare("SELECT s.model, s.key_id AS keyId, k.label, substr(k.api_key,1,6)||'...' AS masked, s.cooldown_until AS until, s.cooldown_reason AS reason FROM model_key_state s JOIN api_keys k ON k.id = s.key_id WHERE s.cooldown_until > ? ORDER BY s.cooldown_until").all(Date.now());
+    const keys = prep("SELECT id,label,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
+    const clientKeys = prep("SELECT id,label,key_prefix AS masked FROM client_keys ORDER BY id").all();
+    const models = prep("SELECT name FROM models ORDER BY name").all();
+    const cooldowns = prep("SELECT s.model, s.key_id AS keyId, k.label, substr(k.api_key,1,6)||'...' AS masked, s.cooldown_until AS until, s.cooldown_reason AS reason FROM model_key_state s JOIN api_keys k ON k.id = s.key_id WHERE s.cooldown_until > ? ORDER BY s.cooldown_until").all(Date.now());
     return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models, cooldowns });
   }
   if (url.pathname === "/api/admin/cooldowns/clear" && request.method === "POST") {
