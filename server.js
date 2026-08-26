@@ -131,6 +131,10 @@ function securityHeaders(response) {
   response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, x-goog-api-key, x-goog-upload-offset, x-goog-upload-command, x-goog-upload-protocol, x-goog-upload-header-content-length, x-goog-upload-header-content-type, x-goog-upload-status");
+  response.setHeader("Access-Control-Max-Age", "86400");
 }
 
 function readBody(request) {
@@ -283,7 +287,9 @@ function createClientKey(label) {
 
 const setupPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Studio Proxy Setup</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius: 0;padding:32px;width:100%;max-width:440px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius: 0;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.5}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius: 0;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius: 0;background:#0f172a;color:#fff;cursor:pointer;transition:background .15s}button:hover{background:#334155}a{color:#0f172a;font-weight:700;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><div class="card"><div class="brand"><div class="badge">AS</div><h1>First-Time Setup</h1></div><p>Create the administrator account for this dashboard.</p><form id="setup"><label>Admin Username</label><input name="username" placeholder="Username" required><label>Admin Password</label><input name="password" type="password" minlength="8" placeholder="Password (8+ chars)" required><button>Create Administrator Account</button></form><div id="result"></div></div><script>setup.onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);let r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:f.get('username'),password:f.get('password')})});let d=await r.json();if(!r.ok)return alert(d.error);result.innerHTML='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0"><p style="color:#0f172a;font-weight:700;margin-bottom:4px">Administrator account created.</p><p>Add your Gemini API keys to start proxying requests.</p><p style="margin-top:12px"><a href="/">Continue to Sign In &rarr;</a></p></div>';e.target.remove()}</script></body></html>`;
 
-const PASS_THROUGH_ACTIONS = new Set(["generateContent", "streamGenerateContent", "countTokens"]);
+const PASS_THROUGH_ACTIONS = new Set(["generateContent", "streamGenerateContent", "countTokens", "embedContent", "batchEmbedContents", "asyncBatchEmbedContent", "predict", "predictLongRunning"]);
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer"]);
 
 function parseApiRoute(pathname) {
   const match = pathname.match(/^\/(?:v1alpha|v1beta|v1)(\/.*)$/);
@@ -293,6 +299,32 @@ function parseApiRoute(pathname) {
   const modelAction = rest.match(/^\/models\/([^/:]+):([A-Za-z]+)$/);
   if (modelAction) return { model: modelAction[1], action: modelAction[2] };
   return { model: null, action: null, subpath: rest };
+}
+
+function parseUploadRoute(pathname) {
+  const match = pathname.match(/^\/upload\/(v1alpha|v1beta|v1)(\/.*)$/);
+  if (!match) return null;
+  return { version: match[1], subpath: match[2] };
+}
+
+function filterResponseHeaders(upstreamHeaders) {
+  const headers = {};
+  for (const [name, value] of Object.entries(upstreamHeaders || {})) {
+    if (!HOP_BY_HOP_HEADERS.has(name.toLowerCase())) headers[name] = value;
+  }
+  return headers;
+}
+
+function rewriteUploadUrl(uploadUrl, request) {
+  try {
+    const host = request.headers["x-forwarded-host"] || request.headers.host || "localhost";
+    const proto = request.headers["x-forwarded-proto"] || "https";
+    const u = new URL(uploadUrl);
+    u.hostname = host.split(":")[0];
+    u.port = host.includes(":") ? host.split(":")[1] : "";
+    u.protocol = proto + ":";
+    return u.toString();
+  } catch { return uploadUrl; }
 }
 
 function statsModelName(model, action, fallbackPath) {
@@ -534,11 +566,11 @@ function contextFromRequest(request) {
   return { url: request.url, method: request.method, headers: request.headers };
 }
 
-function returnUpstream(response, result) {
+function returnUpstream(response, result, request) {
   if (response.writableEnded || response.destroyed) return;
-  const headers = {};
-  for (const name of ["content-type", "content-length", "retry-after"]) {
-    if (result.headers[name]) headers[name] = result.headers[name];
+  const headers = filterResponseHeaders(result.headers);
+  if (request && headers["x-goog-upload-url"]) {
+    headers["x-goog-upload-url"] = rewriteUploadUrl(headers["x-goog-upload-url"], request);
   }
   response.writeHead(result.status, headers);
   return response.end(result.body);
@@ -675,7 +707,7 @@ async function handleModelsList(request, response) {
     return json(response, 200, payload);
   }
   log("info", "Models", `no cache and no known models; blocking on upstream sync`);
-  return returnUpstream(response, await refreshModelsOnce(contextFromRequest(request)));
+  return returnUpstream(response, await refreshModelsOnce(contextFromRequest(request)), request);
 }
 
 async function handleGeminiPassthrough(request, response, model, action) {
@@ -706,7 +738,7 @@ async function handleGeminiPassthrough(request, response, model, action) {
 
   const everyKey = prep("SELECT * FROM api_keys ORDER BY id").all();
   if (!everyKey.length) {
-    log("warn", "Gemini", `[${short}] ${model}: request rejected, no Gemini API keys configured`);
+    log("warn", "Gemini", `[${short}] ${modelName}: request rejected, no Gemini API keys configured`);
     mark("reject", "no Gemini API keys configured");
     recordLog({ model: modelName, traceId, events, status: 503, outcome: "rejected", errorCode: "NO_KEYS_CONFIGURED" });
     return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "No Gemini API keys are configured" } });
@@ -723,25 +755,25 @@ async function handleGeminiPassthrough(request, response, model, action) {
   }
   everyKey.sort((left, right) => left.rank - right.rank || left.until - right.until || (usage.get(left.id) || 0) - (usage.get(right.id) || 0) || left.id - right.id);
   const readyCount = everyKey.filter((key) => key.rank === 0).length;
-  dbg("Gemini", `[${short}] ${model}: ${readyCount} ready key(s), ${everyKey.length - readyCount} cooling down`);
-  dbg("Gemini", `[${short}] ${model}: preference order ${everyKey.map((key) => `#${key.id}(${maskKey(key.api_key)}${key.rank === 1 ? `, ${key.reason}, ~${Math.max(0, Math.ceil((key.until - Date.now()) / 1000))}s left` : ""})`).join(" -> ")}`);
+  dbg("Gemini", `[${short}] ${modelName}: ${readyCount} ready key(s), ${everyKey.length - readyCount} cooling down`);
+  dbg("Gemini", `[${short}] ${modelName}: preference order ${everyKey.map((key) => `#${key.id}(${maskKey(key.api_key)}${key.rank === 1 ? `, ${key.reason}, ~${Math.max(0, Math.ceil((key.until - Date.now()) / 1000))}s left` : ""})`).join(" -> ")}`);
   mark("pool", `${everyKey.length} Gemini key(s); ready now: ${readyCount}`);
   mark("order", `preference ${everyKey.map((key) => `#${key.id}${key.rank === 1 ? ` (cooling: ${key.reason})` : ""}`).join(" > ")}`);
   const selected = everyKey[0];
   const upstreamContext = { url: request.url, method: request.method, headers: request.headers };
   if (selected.rank === 1) {
-    log("warn", "Gemini", `[${short}] ${model}: all keys are cooling down; using key #${selected.id} (${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left)`);
+    log("warn", "Gemini", `[${short}] ${modelName}: all keys are cooling down; using key #${selected.id} (${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left)`);
   }
-  log("info", "Gemini", `[${short}] ${model}: using key #${selected.id} ${maskKey(selected.api_key)}`);
+  log("info", "Gemini", `[${short}] ${modelName}: using key #${selected.id} ${maskKey(selected.api_key)}`);
   mark("select", `key #${selected.id} "${selected.label}" ${maskKey(selected.api_key)} (${selected.rank === 1 ? `cooling: ${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left` : "ready"}; ${usage.get(selected.id) || 0} success(es) today on this model)`);
   const callStartedAt = Date.now();
   try {
     const wantStream = (action || "").toLowerCase() === "streamgeneratecontent";
     const result = await forwardToGemini(upstreamContext, body, selected.api_key, { clientResponse: response, traceId, stream: wantStream });
     if (result.stream) {
-      const outHeaders = {};
-      for (const name of ["content-type", "cache-control"]) {
-        if (result.headers[name]) outHeaders[name] = result.headers[name];
+      const outHeaders = filterResponseHeaders(result.headers);
+      if (outHeaders["x-goog-upload-url"]) {
+        outHeaders["x-goog-upload-url"] = rewriteUploadUrl(outHeaders["x-goog-upload-url"], request);
       }
       response.writeHead(result.status, outHeaders);
       mark("relay", `streaming Google's SSE response to the client (status ${result.status})`);
@@ -780,24 +812,24 @@ async function handleGeminiPassthrough(request, response, model, action) {
     if (classification === "daily_quota") {
       cooldownUntil = nextPacificReset();
       cooldownReason = "daily_quota";
-      log("warn", "Gemini", `[${short}] key #${selected.id} hit daily quota on ${model}; cooldown until Pacific midnight`);
+      log("warn", "Gemini", `[${short}] key #${selected.id} hit daily quota on ${modelName}; cooldown until Pacific midnight`);
       mark("cooldown", `key #${selected.id} benched until Pacific midnight (daily_quota)`);
     } else if (classification === "transient" || classification === "invalid_key") {
       const reason = classification === "invalid_key" ? "invalid_key" : (hasQuotaDetails(errorPayload) ? "high_demand" : "capacity");
       cooldownUntil = Date.now() + TRANSIENT_COOLDOWN_SECONDS * 1000;
       cooldownReason = reason;
-      log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}/${reason}) on ${model}; cooldown ${TRANSIENT_COOLDOWN_SECONDS}s`);
+      log("warn", "Gemini", `[${short}] key #${selected.id} got ${result.status} (${classification}/${reason}) on ${modelName}; cooldown ${TRANSIENT_COOLDOWN_SECONDS}s`);
       mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (${reason})`);
     }
     mark("relay", `relaying Google's response as-is to the client (status ${result.status})`);
     try {
       db.exec("BEGIN");
       prep("INSERT INTO usage (created_at,model,client_key_id,gemini_key_id,outcome,ok,status,error_code) VALUES (?,?,?,?,?,?,?,?)")
-        .run(Date.now(), statsModelName(model, action, requestPath(request)), clientKey.id, selected.id, ok ? "success" : "failed", ok ? 1 : 0, result.status, ok ? null : (code || `HTTP_${result.status}`));
+        .run(Date.now(), modelName, clientKey.id, selected.id, ok ? "success" : "failed", ok ? 1 : 0, result.status, ok ? null : (code || `HTTP_${result.status}`));
       if (cooldownUntil !== null) prep("INSERT INTO model_key_state (model,key_id,cooldown_until,cooldown_reason) VALUES (?,?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,cooldown_reason=excluded.cooldown_reason")
-        .run(model, selected.id, cooldownUntil, cooldownReason);
+        .run(modelName, selected.id, cooldownUntil, cooldownReason);
       prep("INSERT INTO request_logs (created_at,model,key_id,key_label,key_masked,status,outcome,error_code,attempt,trace_id,events,request_body,response_body) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .run(Date.now(), model, selected.id, selected.label, maskKey(selected.api_key),
+        .run(Date.now(), modelName, selected.id, selected.label, maskKey(selected.api_key),
           result.status,
           ok ? "success" : "failed",
           code ? maskSecrets(String(code)) : null, 1, traceId,
@@ -808,11 +840,11 @@ async function handleGeminiPassthrough(request, response, model, action) {
       try { db.exec("ROLLBACK"); } catch {}
       log("error", "Log", `failed to persist request bookkeeping: ${txError.message}`);
     }
-    return returnUpstream(response, result);
+    return returnUpstream(response, result, request);
   } catch (error) {
-    log("warn", "Gemini", `[${short}] key #${selected.id} transport failure on ${model}: ${error.message}`);
+    log("warn", "Gemini", `[${short}] key #${selected.id} transport failure on ${modelName}: ${error.message}`);
     mark("transport", `key #${selected.id} transport failure after ${Date.now() - callStartedAt}ms: ${error.message}`);
-    setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, "upstream_error");
+    setCooldown(modelName, selected.id, TRANSIENT_COOLDOWN_SECONDS, "upstream_error");
     mark("cooldown", `key #${selected.id} benched ${TRANSIENT_COOLDOWN_SECONDS}s (upstream_error)`);
     if (response.writableEnded || response.destroyed) {
       mark("abort", "client disconnected during the request");
@@ -824,7 +856,7 @@ async function handleGeminiPassthrough(request, response, model, action) {
       return;
     }
   }
-  log("error", "Gemini", `[${short}] ${model}: no upstream response`);
+  log("error", "Gemini", `[${short}] ${modelName}: no upstream response`);
   mark("fail", "Google did not respond; proxy generated a 502");
   recordUsageRow(modelName, clientKey?.id, selected?.id, "failed", false, 502, "NO_UPSTREAM_RESPONSE");
   recordLog({ model: modelName, traceId, events, status: 502, outcome: "failed", errorCode: "NO_UPSTREAM_RESPONSE", attempt: 1, requestBody: body });
@@ -852,6 +884,14 @@ async function handleRequest(request, response) {
     return;
   }
   if (url.pathname === "/health") return json(response, 200, { ok: true });
+  if (request.method === "OPTIONS") {
+    response.writeHead(204);
+    return response.end();
+  }
+  const uploadRoute = parseUploadRoute(url.pathname);
+  if (uploadRoute) {
+    return handleGeminiPassthrough(request, response, null, null);
+  }
   const apiRoute = parseApiRoute(url.pathname);
   if (apiRoute && apiRoute.subpath === "/models" && ["GET", "POST"].includes(request.method)) {
     if (!localKeyIsValid(request)) {
