@@ -745,9 +745,9 @@ async function handleGeminiPassthrough(request, response, model, action) {
     return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "No Gemini API keys are configured" } });
   }
   const usage = prep("SELECT gemini_key_id AS key_id, COUNT(*) AS count FROM usage WHERE model = ? AND ok = 1 AND created_at >= ? GROUP BY gemini_key_id")
-    .all(model, pacificDayStart()).reduce((map, row) => map.set(row.key_id, row.count), new Map());
+    .all(modelName, pacificDayStart()).reduce((map, row) => map.set(row.key_id, row.count), new Map());
   const coolingRows = new Map(prep("SELECT key_id, cooldown_until, cooldown_reason FROM model_key_state WHERE model = ?")
-    .all(model).filter((row) => row.cooldown_until > Date.now()).map((row) => [row.key_id, row]));
+    .all(modelName).filter((row) => row.cooldown_until > Date.now()).map((row) => [row.key_id, row]));
   for (const key of everyKey) {
     const cd = coolingRows.get(key.id);
     key.rank = cd ? 1 : 0;
@@ -778,7 +778,7 @@ async function handleGeminiPassthrough(request, response, model, action) {
       }
       response.writeHead(result.status, outHeaders);
       mark("relay", `streaming Google's SSE response to the client (status ${result.status})`);
-      recordUsageRow(statsModelName(model, action, requestPath(request)), clientKey.id, selected.id, "success", true, result.status, null);
+      recordUsageRow(modelName, clientKey.id, selected.id, "success", true, result.status, null);
       let captured = 0;
       const capturedChunks = [];
       let finalized = false;
@@ -786,7 +786,7 @@ async function handleGeminiPassthrough(request, response, model, action) {
         if (finalized) return;
         finalized = true;
         recordLog({
-          model: statsModelName(model, action, requestPath(request)), traceId, events,
+          model: modelName, traceId, events,
           keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
           status: result.status, outcome: "success", errorCode: null, attempt: 1,
           requestBody: body, responseBody: Buffer.concat(capturedChunks)
