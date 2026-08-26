@@ -8,7 +8,7 @@ const { DatabaseSync } = require("node:sqlite");
 const PORT = Number(process.env.PORT || 9009);
 const DB_PATH = process.env.DB_PATH || "./ai-studio-proxy.db";
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
-const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
+const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 50 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
 const TRANSIENT_COOLDOWN_SECONDS = 60;
 const LOG_BODY_MAX_BYTES = Math.max(1024, Number(process.env.LOG_BODY_MAX_BYTES || 64 * 1024));
@@ -283,10 +283,21 @@ function createClientKey(label) {
 
 const setupPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Studio Proxy Setup</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius: 0;padding:32px;width:100%;max-width:440px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius: 0;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.5}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius: 0;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius: 0;background:#0f172a;color:#fff;cursor:pointer;transition:background .15s}button:hover{background:#334155}a{color:#0f172a;font-weight:700;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><div class="card"><div class="brand"><div class="badge">AS</div><h1>First-Time Setup</h1></div><p>Create the administrator account for this dashboard.</p><form id="setup"><label>Admin Username</label><input name="username" placeholder="Username" required><label>Admin Password</label><input name="password" type="password" minlength="8" placeholder="Password (8+ chars)" required><button>Create Administrator Account</button></form><div id="result"></div></div><script>setup.onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);let r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:f.get('username'),password:f.get('password')})});let d=await r.json();if(!r.ok)return alert(d.error);result.innerHTML='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0"><p style="color:#0f172a;font-weight:700;margin-bottom:4px">Administrator account created.</p><p>Add your Gemini API keys to start proxying requests.</p><p style="margin-top:12px"><a href="/">Continue to Sign In &rarr;</a></p></div>';e.target.remove()}</script></body></html>`;
 
-function modelNameFromPath(path) {
-  const match = path.match(/^\/v1beta\/models\/([^/:]+):generateContent$/);
+const PASS_THROUGH_ACTIONS = new Set(["generateContent", "streamGenerateContent", "countTokens"]);
+
+function parseApiRoute(pathname) {
+  const match = pathname.match(/^\/(?:v1alpha|v1beta|v1)(\/.*)$/);
   if (!match) return null;
-  try { return decodeURIComponent(match[1]); } catch { return null; }
+  let rest;
+  try { rest = decodeURIComponent(match[1]); } catch { return null; }
+  const modelAction = rest.match(/^\/models\/([^/:]+):([A-Za-z]+)$/);
+  if (modelAction) return { model: modelAction[1], action: modelAction[2] };
+  return { model: null, action: null, subpath: rest };
+}
+
+function statsModelName(model, action, fallbackPath) {
+  if (!model) return fallbackPath || "api";
+  return PASS_THROUGH_ACTIONS.has((action || "").toLowerCase()) ? model : `${model}:${action}`;
 }
 
 function poolKeys() {
@@ -455,10 +466,13 @@ function forwardToGemini(context, body, key, opts = {}) {
     upstreamUrl.pathname = incomingUrl.pathname;
     upstreamUrl.search = incomingUrl.search;
     if (upstreamUrl.searchParams.has("key")) upstreamUrl.searchParams.set("key", key);
+    const droppedHeaders = new Set(["host", "connection", "keep-alive", "transfer-encoding", "upgrade",
+      "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer",
+      "authorization", "cookie", "content-length", "x-goog-api-key"]);
     const headers = {};
-    for (const name of ["content-type", "accept", "user-agent", "x-goog-api-client", "x-goog-user-project"]) {
-      const value = (context.headers || {})[name];
-      if (value) headers[name] = value;
+    for (const [name, value] of Object.entries(context.headers || {})) {
+      const lower = name.toLowerCase();
+      if (!droppedHeaders.has(lower) && !lower.startsWith("proxy-")) headers[name] = value;
     }
     headers["content-length"] = body.length;
     headers["x-goog-api-key"] = key;
@@ -475,6 +489,11 @@ function forwardToGemini(context, body, key, opts = {}) {
       headers,
     }, (response) => {
       dbg("Upstream", `[${(opts.traceId || "").slice(0, 8)}] key ${maskKey(key)} -> ${context.method || "GET"} ${upstreamUrl.pathname} started (timeout ${timeoutMs}ms)`);
+      if (opts.stream && response.statusCode >= 200 && response.statusCode < 300 &&
+          String(response.headers["content-type"] || "").includes("event-stream")) {
+        finish(resolve, { stream: true, status: response.statusCode, headers: response.headers, response });
+        return;
+      }
       const chunks = [];
       let bytes = 0;
       let tooLarge = false;
@@ -659,7 +678,8 @@ async function handleModelsList(request, response) {
   return returnUpstream(response, await refreshModelsOnce(contextFromRequest(request)));
 }
 
-async function handleGemini(request, response, model) {
+async function handleGeminiPassthrough(request, response, model, action) {
+  const modelName = statsModelName(model, action, requestPath(request));
   const startedAt = Date.now();
   const traceId = crypto.randomUUID();
   const short = traceId.slice(0, 8);
@@ -671,7 +691,7 @@ async function handleGemini(request, response, model) {
   if (!clientKey) {
     log("warn", "Auth", `[${short}] rejected ${request.method} ${requestPath(request)}: invalid client key from ${clientAddress(request)}`);
     mark("reject", "invalid client API key");
-    recordLog({ model, traceId, events, status: 401, outcome: "rejected", errorCode: "INVALID_CLIENT_KEY" });
+    recordLog({ model: modelName, traceId, events, status: 401, outcome: "rejected", errorCode: "INVALID_CLIENT_KEY" });
     return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
   }
   mark("auth", "client key accepted");
@@ -679,7 +699,7 @@ async function handleGemini(request, response, model) {
   let body;
   try { body = await readBody(request); } catch (error) {
     mark("reject", `request body could not be read: ${error.message}`);
-    recordLog({ model, traceId, events, status: error.status || 400, outcome: "rejected", errorCode: "BODY_READ_FAILED" });
+    recordLog({ model: modelName, traceId, events, status: error.status || 400, outcome: "rejected", errorCode: "BODY_READ_FAILED" });
     return json(response, error.status || 400, { error: error.message });
   }
   mark("body", `${Buffer.byteLength(body)} byte request body`);
@@ -688,7 +708,7 @@ async function handleGemini(request, response, model) {
   if (!everyKey.length) {
     log("warn", "Gemini", `[${short}] ${model}: request rejected, no Gemini API keys configured`);
     mark("reject", "no Gemini API keys configured");
-    recordLog({ model, traceId, events, status: 503, outcome: "rejected", errorCode: "NO_KEYS_CONFIGURED" });
+    recordLog({ model: modelName, traceId, events, status: 503, outcome: "rejected", errorCode: "NO_KEYS_CONFIGURED" });
     return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "No Gemini API keys are configured" } });
   }
   const usage = prep("SELECT gemini_key_id AS key_id, COUNT(*) AS count FROM usage WHERE model = ? AND ok = 1 AND created_at >= ? GROUP BY gemini_key_id")
@@ -716,7 +736,39 @@ async function handleGemini(request, response, model) {
   mark("select", `key #${selected.id} "${selected.label}" ${maskKey(selected.api_key)} (${selected.rank === 1 ? `cooling: ${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left` : "ready"}; ${usage.get(selected.id) || 0} success(es) today on this model)`);
   const callStartedAt = Date.now();
   try {
-    const result = await forwardToGemini(upstreamContext, body, selected.api_key, { clientResponse: response, traceId });
+    const wantStream = (action || "").toLowerCase() === "streamgeneratecontent";
+    const result = await forwardToGemini(upstreamContext, body, selected.api_key, { clientResponse: response, traceId, stream: wantStream });
+    if (result.stream) {
+      const outHeaders = {};
+      for (const name of ["content-type", "cache-control"]) {
+        if (result.headers[name]) outHeaders[name] = result.headers[name];
+      }
+      response.writeHead(result.status, outHeaders);
+      mark("relay", `streaming Google's SSE response to the client (status ${result.status})`);
+      recordUsageRow(statsModelName(model, action, requestPath(request)), clientKey.id, selected.id, "success", true, result.status, null);
+      let captured = 0;
+      const capturedChunks = [];
+      const finalize = () => {
+        recordLog({
+          model: statsModelName(model, action, requestPath(request)), traceId, events,
+          keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
+          status: result.status, outcome: "success", errorCode: null, attempt: 1,
+          requestBody: body, responseBody: Buffer.concat(capturedChunks)
+        });
+        dbg("Gemini", `[${short}] stream finished (${captured} bytes relayed)`);
+      };
+      result.response.on("data", (chunk) => {
+        if (captured < LOG_BODY_MAX_BYTES) { capturedChunks.push(chunk); captured += chunk.length; }
+        if (!response.writableEnded && !response.destroyed && !response.write(chunk)) {
+          result.response.pause();
+          response.once("drain", () => result.response.resume());
+        }
+      });
+      result.response.on("end", () => { response.end(); finalize(); });
+      result.response.on("error", () => { response.destroy(); finalize(); });
+      response.on("close", () => { if (!response.writableEnded) { mark("abort", "client disconnected during stream"); try { result.response.destroy(); } catch {} } });
+      return;
+    }
     const ok = result.status >= 200 && result.status < 300;
     const errorPayload = ok ? null : upstreamErrorPayload(result.body);
     const code = ok ? null : errorCodeFromPayload(errorPayload);
@@ -741,7 +793,7 @@ async function handleGemini(request, response, model) {
     try {
       db.exec("BEGIN");
       prep("INSERT INTO usage (created_at,model,client_key_id,gemini_key_id,outcome,ok,status,error_code) VALUES (?,?,?,?,?,?,?,?)")
-        .run(Date.now(), model, clientKey.id, selected.id, ok ? "success" : "failed", ok ? 1 : 0, result.status, ok ? null : (code || `HTTP_${result.status}`));
+        .run(Date.now(), statsModelName(model, action, requestPath(request)), clientKey.id, selected.id, ok ? "success" : "failed", ok ? 1 : 0, result.status, ok ? null : (code || `HTTP_${result.status}`));
       if (cooldownUntil !== null) prep("INSERT INTO model_key_state (model,key_id,cooldown_until,cooldown_reason) VALUES (?,?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,cooldown_reason=excluded.cooldown_reason")
         .run(model, selected.id, cooldownUntil, cooldownReason);
       prep("INSERT INTO request_logs (created_at,model,key_id,key_label,key_masked,status,outcome,error_code,attempt,trace_id,events,request_body,response_body) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
@@ -765,7 +817,7 @@ async function handleGemini(request, response, model) {
     if (response.writableEnded || response.destroyed) {
       mark("abort", "client disconnected during the request");
       recordLog({
-        model, traceId, events, attempt: 1,
+        model: modelName, traceId, events, attempt: 1,
         keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
         status: null, outcome: "aborted", errorCode: `transport: ${error.message}`.slice(0, 160), requestBody: body
       });
@@ -774,8 +826,8 @@ async function handleGemini(request, response, model) {
   }
   log("error", "Gemini", `[${short}] ${model}: no upstream response`);
   mark("fail", "Google did not respond; proxy generated a 502");
-  recordUsageRow(model, clientKey?.id, selected?.id, "failed", false, 502, "NO_UPSTREAM_RESPONSE");
-  recordLog({ model, traceId, events, status: 502, outcome: "failed", errorCode: "NO_UPSTREAM_RESPONSE", attempt: 1, requestBody: body });
+  recordUsageRow(modelName, clientKey?.id, selected?.id, "failed", false, 502, "NO_UPSTREAM_RESPONSE");
+  recordLog({ model: modelName, traceId, events, status: 502, outcome: "failed", errorCode: "NO_UPSTREAM_RESPONSE", attempt: 1, requestBody: body });
   return json(response, 502, { error: { code: 502, status: "BAD_GATEWAY", message: "Gemini did not respond on any attempted key" } });
 }
 
@@ -800,9 +852,10 @@ async function handleRequest(request, response) {
     return;
   }
   if (url.pathname === "/health") return json(response, 200, { ok: true });
-  if (url.pathname === "/v1beta/models" && ["GET", "POST"].includes(request.method)) {
+  const apiRoute = parseApiRoute(url.pathname);
+  if (apiRoute && apiRoute.subpath === "/models" && ["GET", "POST"].includes(request.method)) {
     if (!localKeyIsValid(request)) {
-      log("warn", "Auth", `rejected ${request.method} /v1beta/models: invalid client key from ${clientAddress(request)}`);
+      log("warn", "Auth", `rejected ${request.method} ${url.pathname}: invalid client key from ${clientAddress(request)}`);
       return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
     }
     return handleModelsList(request, response);
@@ -999,7 +1052,9 @@ async function handleRequest(request, response) {
     log("info", "Admin", `Gemini key #${keyId}${deleted ? ` ('${deleted.label}')` : ""} deleted with its usage data`);
     return json(response, 200, { ok: true });
   }
-  if (request.method === "POST") { const model = modelNameFromPath(url.pathname); if (model) return handleGemini(request, response, model); }
+  if (apiRoute) {
+    return handleGeminiPassthrough(request, response, apiRoute.model, apiRoute.action);
+  }
   dbg("HTTP", `no route matched: ${request.method} ${url.pathname}`);
   return json(response, 404, { error: "Not found" });
 }

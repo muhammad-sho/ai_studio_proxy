@@ -165,9 +165,13 @@ The proxy exposes the Gemini API using the standard Gemini request format.
 Point any Gemini-compatible app at the proxy and swap two things: the URL and
 the key.
 
-Supported endpoints: `GET /v1beta/models` (list models) and
-`POST /v1beta/models/{model}:generateContent`. Streaming responses
-(`streamGenerateContent`) and `countTokens` are not proxied.
+All Gemini API formats are proxied verbatim across `v1`, `v1beta` and
+`v1alpha`: `generateContent`, `streamGenerateContent` (SSE tokens stream
+through live), `countTokens`, `embedContent` and any other model action —
+plus non-model endpoints such as `cachedContents`. Any content type
+(text, inline images, audio, files) and any request parameter is forwarded
+byte-for-byte; only the API key is swapped for a pooled one. Requests up
+to 50 MB are accepted.
 
 ```bash
 curl http://127.0.0.1:9009/v1beta/models/gemini-2.0-flash:generateContent \
@@ -294,7 +298,7 @@ dashboard setup. Add these to the `environment:` section of
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
 | `MAX_LOG_ENTRIES` | `1000` | Maximum request-log entries kept in the database; entries older than 7 days are also removed (pruned hourly) |
 | `LOG_BODY_MAX_BYTES` | `65536` | Per side (request/response) payload size kept per log entry; larger payloads are truncated |
-| `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
+| `MAX_BODY_BYTES` | `52428800` | Maximum accepted request body size (default 50 MB) |
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
 | `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |
 
