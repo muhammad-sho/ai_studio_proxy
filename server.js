@@ -1076,6 +1076,25 @@ async function handleRequest(request, response) {
   if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); invalidateSecretMaskCache(); log("info", "Admin", `client key #${clientKeyMatch[1]} deleted`); return json(response, 200, { ok: true }); }
   if (url.pathname === "/api/admin/keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
+    const bulkKeys = Array.isArray(body.keys) ? body.keys : null;
+    if (bulkKeys) {
+      const results = [];
+      const insert = db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)");
+      const dupeCheck = db.prepare("SELECT id FROM api_keys WHERE api_key = ?");
+      for (let i = 0; i < bulkKeys.length; i++) {
+        const keyValue = String(bulkKeys[i] || "").trim();
+        if (!keyValue) { results.push({ key: "(empty)", status: "skipped", error: "empty" }); continue; }
+        if (dupeCheck.get(keyValue)) { results.push({ key: maskKey(keyValue), status: "skipped", error: "duplicate" }); continue; }
+        const label = nextAutoLabel("api_keys", "Key");
+        insert.run(label, keyValue, Date.now());
+        results.push({ key: maskKey(keyValue), label, status: "added" });
+        log("info", "Admin", `Gemini key added: '${label}' ${maskKey(keyValue)}`);
+      }
+      invalidateSecretMaskCache();
+      const added = results.filter((r) => r.status === "added").length;
+      const skipped = results.filter((r) => r.status === "skipped").length;
+      return json(response, 201, { ok: true, added, skipped, results });
+    }
     const keyValue = String(body.key || "").trim();
     if (!keyValue) return json(response, 400, { error: "API key is required" });
     if (db.prepare("SELECT id FROM api_keys WHERE api_key = ?").get(keyValue)) return json(response, 409, { error: "This API key is already configured" });

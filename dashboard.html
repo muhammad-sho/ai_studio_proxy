@@ -687,18 +687,19 @@
   <div id="panel-gemini-keys" class="panel">
     <div class="section-box">
       <h2 class="section-title">Add Gemini API Key</h2>
-      <p class="section-desc">Add API keys from your Google AI Studio accounts. Requests are distributed across all configured keys.</p>
+      <p class="section-desc">Add API keys from your Google AI Studio accounts. Requests are distributed across all configured keys. Paste one key per line or separate with commas.</p>
       <form id="keyForm" class="form-flex">
         <div class="field-col">
-          <label class="field-label">Label <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+          <label class="field-label">Label <span style="color:var(--text-muted);font-weight:400">(optional, single key only)</span></label>
           <input type="text" name="label" class="form-input" placeholder="e.g. google-account-01">
         </div>
         <div class="field-col" style="flex:2">
-          <label class="field-label">Gemini API Key</label>
-          <input type="password" name="key" class="form-input" placeholder="AIzaSy..." required>
+          <label class="field-label">Gemini API Key(s)</label>
+          <textarea name="key" class="form-input" rows="3" placeholder="AIzaSy...&#10;AIzaSy...&#10;AIzaSy..." required style="resize:vertical;font-family:monospace;font-size:13px"></textarea>
         </div>
-        <button type="submit" class="btn-primary">Add Key</button>
+        <button type="submit" class="btn-primary">Add Key(s)</button>
       </form>
+      <div id="keyImportResult" style="display:none;margin-top:12px;padding:10px 14px;border-radius:0;background:var(--bg);font-size:13px;line-height:1.6"></div>
     </div>
     <div class="section-box">
       <h2 class="section-title">Configured Gemini Keys</h2>
@@ -1390,13 +1391,33 @@
 
   document.getElementById('keyForm').onsubmit = async (event) => {
     event.preventDefault();
+    const resultDiv = document.getElementById('keyImportResult');
     try {
       const form = new FormData(event.target);
-      await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: form.get('label'), key: form.get('key') }) });
-      event.target.reset();
-      showPanel('gemini-keys');
+      const raw = (form.get('key') || '').trim();
+      const keys = raw.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+      if (!keys.length) { alert('Please enter at least one API key'); return; }
+      if (keys.length === 1) {
+        await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: form.get('label'), key: keys[0] }) });
+        event.target.reset();
+        showPanel('gemini-keys');
+        load();
+        return;
+      }
+      const data = await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ keys }) });
+      event.target.querySelector('[name=key]').value = '';
+      event.target.querySelector('[name=label]').value = '';
+      const lines = [];
+      if (data.added) lines.push(`<b>${data.added}</b> key(s) added`);
+      if (data.skipped) lines.push(`<b>${data.skipped}</b> skipped (duplicates or empty)`);
+      if (data.results) {
+        const added = data.results.filter((r) => r.status === 'added');
+        if (added.length) lines.push(added.map((r) => `${r.label}: ${r.key}`).join('<br>'));
+      }
+      resultDiv.innerHTML = lines.join('<br>');
+      resultDiv.style.display = 'block';
       load();
-    } catch (err) { alert(err.message); }
+    } catch (err) { alert(err.message); resultDiv.style.display = 'none'; }
   };
 
   async function deleteClientKey(id) {
