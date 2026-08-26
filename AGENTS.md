@@ -1,0 +1,46 @@
+# AGENTS.md
+
+## Stack
+
+- Zero-dependency Node.js (22+): `server.js` (~1000 lines) is the entire backend — HTTP server, SQLite via built-in `node:sqlite`, upstream forwarding, and the embedded setup/sign-in HTML pages (inline strings).
+- `dashboard.html` (~1400 lines) is the entire UI: CSS + JS + markup in one file, no build step.
+- No `package.json`, no test framework, no linter. Don't add dependencies or tooling without being asked.
+
+## Verification (no test suite exists)
+
+```bash
+node --check server.js          # JS syntax
+sh -n entrypoint.sh             # shell syntax
+python3 -c "import yaml; [yaml.safe_load(open(f)) for f in ['docker-compose.yml','docker-compose.dev.yml','.github/workflows/publish-ghcr.yml']]"
+```
+
+Functional testing = boot on a scratch port with a temp DB and drive the API:
+
+```bash
+PORT=18970 DB_PATH=/tmp/x/db timeout 10 node server.js &
+# must run from the project directory (see gotchas)
+curl -X POST localhost:18970/api/setup -H 'Content-Type: application/json' -d '{"username":"admin","password":"testpass123"}'
+```
+
+Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token from the cookie jar (`awk '$6=="ai_studio_proxy_csrf" {print $7}' "$J"`) and send `-H "x-csrf-token: $CSRF"`. GETs need only the session cookie.
+
+## Gotchas
+
+- **cwd matters**: `server.js` reads `dashboard.html` relative to the working directory. Running `node server.js` from anywhere else crashes at boot. Docker sets WORKDIR /app, so only affects local runs.
+- To simulate upstream failures, append `127.0.0.1 generativelanguage.googleapis.com` to `/etc/hosts`, and remove it afterwards (verify with `rg googleapis /etc/hosts`). Node's keep-alive agent reuses sockets, so DNS tricks don't affect requests already warmed in the same process — restart the server after changing hosts. Permanent-looking 400s from "Google" during such tests mean the blackhole didn't apply.
+- Invalid Gemini API keys get a real Google `400 INVALID_ARGUMENT` (classified permanent, relayed after one attempt). Only 429/5xx/transport errors trigger retry/cooldown paths.
+- `.gitignore` covers `*.db*` — never commit databases; use `/tmp` for test DBs.
+
+## Behavior contracts
+
+- Cooldowns have exactly two cases: transient failures bench a key 60 s (`TRANSIENT_COOLDOWN_SECONDS`), daily-quota benches until Pacific midnight. Retries pause `ATTEMPT_DELAY_MS` (default 5 s) between attempts. Don't reintroduce other cooldown sources without asking.
+- `model_stats` table is write-only observability (rolling 30-day prune); routing/cooldown logic must never read it.
+- Schema changes are additive `CREATE TABLE IF NOT EXISTS` only — legacy ALTER-migrations were deliberately removed; don't add migration shims.
+- `maskSecrets()` caches key→mask pairs; invalidate via `invalidateSecretMaskCache()` wherever keys are inserted/deleted.
+- Cookie names (`ai_studio_proxy_dashboard`/`_csrf`) and localStorage keys (`ai_studio_proxy_*`) are load-bearing identifiers renamed during the project rebrand — renaming them logs users out.
+
+## Naming & docs conventions
+
+- Repo is `ai_studio_proxy` (underscores); Docker image/service/container are `ai-studio-proxy` (hyphens); internal identifiers use underscores. Default port is 9009.
+- README and all UI copy must state facts that match current behavior — the owner audits both for accuracy. Use neutral product language ("optional", purpose-first descriptions); no conversational phrasing that references feature requests or implementation history.
+- Deploy = push to `origin/main` (GHCR workflow publishes `latest`; semver tags on `v*.*.*`). The owner's standing workflow: review, test, then push after finishing.
