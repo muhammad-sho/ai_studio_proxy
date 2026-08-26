@@ -335,11 +335,6 @@ function usageStats() {
   `).all(start, Date.now());
 }
 
-function recordRequest(model, keyId, status) {
-  if (status < 200 || status >= 300) return;
-  prep("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, keyId, status, Date.now());
-}
-
 let secretMaskCache = null;
 function invalidateSecretMaskCache() { secretMaskCache = null; }
 function maskSecrets(text) {

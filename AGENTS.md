@@ -53,6 +53,7 @@ The app is past initial testing and running for real users. Every change must be
 
 ## Naming & docs conventions
 
+- Known accepted trade-offs (former audit findings, deliberately not fixed): CSP allows `'unsafe-inline'` scripts (dashboard is one static file); usage attribution is per Gemini key only, not per client key; `POST /v1beta/models` is accepted alongside GET (legacy compatibility); `dashboard.html` is read once at boot, so UI edits need a restart. Don't "fix" these silently — they're owner-approved.
 - Repo is `ai_studio_proxy` (underscores); Docker image/service/container are `ai-studio-proxy` (hyphens); internal identifiers use underscores. Default port is 9009.
 - README and all UI copy must state facts that match current behavior — the owner audits both for accuracy. Use neutral product language ("optional", purpose-first descriptions); no conversational phrasing that references feature requests or implementation history.
 - Deploy = push to `origin/main` (GHCR workflow publishes `latest`; semver tags on `v*.*.*`). The owner's standing workflow: review, test, then push after finishing.
