@@ -3,5 +3,7 @@
 *.db-shm
 *.db-wal
 .git
+.github
 node_modules
 npm-debug.log
+*.md

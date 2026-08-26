@@ -844,7 +844,11 @@ async function handleRequest(request, response) {
     let raw; try { raw = (await readBody(request)).toString(); } catch { return json(response, 400, { error: "Invalid request" }); }
     const body = Object.fromEntries(new URLSearchParams(raw));
     const username = String(body.username || "");
-    const user = username ? db.prepare("SELECT * FROM admin_users WHERE username = ?").get(username) : null;
+    let user = username ? db.prepare("SELECT * FROM admin_users WHERE username = ?").get(username) : null;
+    if (!user) {
+      // burn comparable CPU so unknown usernames are not distinguishable by response time
+      await passwordValid(String(body.password || ""), { password_salt: "00000000000000000000000000000000", password_hash: "00".repeat(64) });
+    }
     if (!user || !(await passwordValid(String(body.password || ""), user))) {
       log("warn", "Auth", `failed login for username '${username || "(empty)"}' from ${address}`);
       recordLoginFailure(address);
@@ -910,14 +914,19 @@ async function handleRequest(request, response) {
     return json(response, 200, entry);
   }
   if (url.pathname === "/api/admin/usage" && request.method === "GET") {
-    const period = url.searchParams.get("period") || "30d";
+    const allowedPeriods = new Set(["today", "7d", "30d", "month", "all"]);
+    let period = url.searchParams.get("period") || "30d";
     const monthParam = url.searchParams.get("month") || "";
+    if (!allowedPeriods.has(period)) period = "30d";
     let start = 0;
     let end = Number.MAX_SAFE_INTEGER;
     let scope;
     if (/^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam)) {
       [start, end] = pacificMonthRange(monthParam);
       scope = `month ${monthParam}`;
+    } else if (period === "month") {
+      [start, end] = pacificMonthRange(pacificMonthString());
+      scope = `month ${pacificMonthString()}`;
     } else if (period === "today") {
       start = pacificDayStart();
       scope = "today (Pacific)";
@@ -1022,6 +1031,9 @@ function shutdown(signal) {
   server.close(() => { try { db.close(); } catch {} process.exit(0); });
   setTimeout(() => process.exit(0), 3000).unref();
 }
+process.on("unhandledRejection", (reason) => {
+  log("error", "Process", `unhandled rejection: ${reason && reason.stack ? reason.stack : reason}`);
+});
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
