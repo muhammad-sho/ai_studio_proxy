@@ -330,7 +330,7 @@ function rewriteUploadUrl(uploadUrl, request) {
 
 function statsModelName(model, action, fallbackPath) {
   if (!model) return fallbackPath || "api";
-  return PASS_THROUGH_ACTIONS.has((action || "").toLowerCase()) ? model : `${model}:${action}`;
+  return PASS_THROUGH_ACTIONS.has(action || "") ? model : `${model}:${action}`;
 }
 
 function poolKeys() {
