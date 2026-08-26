@@ -630,8 +630,7 @@
     <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
     <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
     <button class="nav-tab" data-tab="howto" onclick="showPanel('howto',this)">How to Use</button>
-    <button class="nav-tab" data-tab="logs" onclick="showPanel('logs',this)">Request Logs</button>
-    <button class="nav-tab" data-tab="stats" onclick="showPanel('stats',this)">Model Stats</button>
+    <button class="nav-tab" data-tab="statistics" onclick="showPanel('statistics',this)">Statistics &amp; Logs</button>
   </nav>
 
   <!-- Overview Panel -->
@@ -837,8 +836,66 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     </div>
   </div>
 
-  <!-- Request Logs Panel -->
-  <div id="panel-logs" class="panel">
+  <!-- Statistics & Logs Panel -->
+  <div id="panel-statistics" class="panel">
+    <div class="nav-row" style="margin-bottom:16px">
+      <button class="nav-tab active" id="subtab-analytics" onclick="showSub('analytics')">Analytics</button>
+      <button class="nav-tab" id="subtab-logs" onclick="showSub('logs')">Request Logs</button>
+    </div>
+
+    <div id="sub-analytics">
+      <div class="section-box">
+        <h2 class="section-title">Usage Analytics</h2>
+        <p class="section-desc">Requests per calendar month (Pacific), split by client key, Gemini key and model — including failures and their reasons. History is kept permanently.</p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <select id="usageMonth" class="form-input" style="width:auto" onchange="loadUsage()"></select>
+          <button type="button" class="btn-primary" onclick="loadUsage()">Refresh</button>
+          <span id="usageMeta" style="font-size:12px;color:var(--text-muted)"></span>
+        </div>
+
+        <p class="field-label" style="margin-bottom:8px">Per client key</p>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <table class="data-table">
+            <thead><tr><th>Label</th><th>Requests</th><th>Success</th><th>Failed</th></tr></thead>
+            <tbody id="usageClientTbody"><tr><td colspan="4" class="empty-notice">No requests recorded this month.</td></tr></tbody>
+          </table>
+        </div>
+
+        <p class="field-label" style="margin-bottom:8px">Per Gemini key</p>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <table class="data-table">
+            <thead><tr><th>Label</th><th>Requests</th><th>Success</th><th>Failed</th></tr></thead>
+            <tbody id="usageKeysTbody"><tr><td colspan="4" class="empty-notice">No requests recorded this month.</td></tr></tbody>
+          </table>
+        </div>
+
+        <p class="field-label" style="margin-bottom:8px">Per model</p>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <table class="data-table">
+            <thead><tr><th>Model</th><th>Requests</th><th>Success</th><th>Failed</th><th>Failures by Reason</th></tr></thead>
+            <tbody id="usageModelsTbody"><tr><td colspan="5" class="empty-notice">No requests recorded this month.</td></tr></tbody>
+          </table>
+        </div>
+
+        <p class="field-label" style="margin-bottom:8px">Models &times; client keys</p>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <table class="data-table usage-table">
+            <thead id="usageMatrixClientHead"></thead>
+            <tbody id="usageMatrixClient"><tr><td colspan="2" class="empty-notice">No data this month.</td></tr></tbody>
+          </table>
+        </div>
+
+        <p class="field-label" style="margin-bottom:8px">Models &times; Gemini keys</p>
+        <div class="table-wrap">
+          <table class="data-table usage-table">
+            <thead id="usageMatrixGeminiHead"></thead>
+            <tbody id="usageMatrixGemini"><tr><td colspan="2" class="empty-notice">No data this month.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="sub-logs" style="display:none">
     <div class="section-box">
       <h2 class="section-title">Request Logs</h2>
       <p class="section-desc">Every generateContent request with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
@@ -867,28 +924,6 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
         </span>
       </div>
     </div>
-  </div>
-
-  <!-- Model Stats Panel -->
-  <div id="panel-stats" class="panel">
-    <div class="section-box">
-      <h2 class="section-title">Model Statistics</h2>
-      <p class="section-desc">Success and failure counts per model over the selected window, across all keys. Use this to identify models with high failure rates.</p>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
-        <select id="statsWindow" class="form-input" style="width:auto" onchange="loadStats()">
-          <option value="1">Last 24 hours</option>
-          <option value="7">Last 7 days</option>
-          <option value="30" selected>Last 30 days</option>
-        </select>
-        <button type="button" class="btn-primary" onclick="loadStats()">Refresh</button>
-        <span id="statsMeta" style="font-size:12px;color:var(--text-muted)"></span>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>Model</th><th>Requests</th><th>Success</th><th>Failed</th><th>Success Rate</th><th>Failures by Reason</th></tr></thead>
-          <tbody id="statsTbody"><tr><td colspan="6" class="empty-notice">No statistics recorded yet.</td></tr></tbody>
-        </table>
-      </div>
     </div>
   </div>
 
@@ -1239,7 +1274,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   }
 
   function showPanel(name, tabEl, updateHash = true) {
-    const validTabs = ['overview', 'gemini-keys', 'client-keys', 'howto', 'logs', 'stats'];
+    const validTabs = ['overview', 'gemini-keys', 'client-keys', 'howto', 'statistics'];
     if (!validTabs.includes(name)) name = 'overview';
 
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -1255,8 +1290,19 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     if (updateHash && window.location.hash !== '#' + name) {
       history.replaceState(null, '', '#' + name);
     }
-    if (name === 'logs') loadLogs();
-    if (name === 'stats') loadStats();
+    if (name === 'statistics') showSub(currentSub(), true);
+  }
+
+  function currentSub() {
+    return document.getElementById('sub-logs').style.display !== 'none' ? 'logs' : 'analytics';
+  }
+
+  function showSub(name, force) {
+    document.getElementById('sub-analytics').style.display = name === 'analytics' ? 'block' : 'none';
+    document.getElementById('sub-logs').style.display = name === 'logs' ? 'block' : 'none';
+    document.getElementById('subtab-analytics').classList.toggle('active', name === 'analytics');
+    document.getElementById('subtab-logs').classList.toggle('active', name === 'logs');
+    if (name === 'analytics') loadUsage(); else loadLogs();
   }
 
   function initActiveTab() {
@@ -1273,31 +1319,54 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
   async function load() {
     try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
-    if (document.getElementById('panel-logs')?.classList.contains('active')) loadLogs(false);
-    if (document.getElementById('panel-stats')?.classList.contains('active')) loadStats();
+    if (document.getElementById('panel-statistics')?.classList.contains('active')) {
+      if (currentSub() === 'analytics') loadUsage(); else loadLogs(false);
+    }
   }
 
-  async function loadStats() {
+  function buildMatrix(headId, bodyId, entries) {
+    const headEl = document.getElementById(headId);
+    const bodyEl = document.getElementById(bodyId);
+    if (!entries.length) {
+      headEl.innerHTML = '';
+      bodyEl.innerHTML = '<tr><td colspan="2" class="empty-notice">No data this month.</td></tr>';
+      return;
+    }
+    const models = [...new Set(entries.map(e => e.model))].sort();
+    const keys = [...new Set(entries.map(e => e.label))];
+    const lookup = {};
+    entries.forEach(e => { lookup[e.model + '||' + e.label] = e.total; });
+    headEl.innerHTML = '<tr><th>Model</th>' + keys.map(k => `<th title="${esc(k)}">${esc(k)}</th>`).join('') + '</tr>';
+    bodyEl.innerHTML = models.map(m =>
+      '<tr><th title="' + esc(m) + '">' + esc(m.length > 28 ? m.slice(0, 27) + '…' : m) + '</th>' +
+      keys.map(k => `<td class="num">${lookup[m + '||' + k] || '·'}</td>`).join('') + '</tr>'
+    ).join('');
+  }
+
+  async function loadUsage() {
     try {
-      const days = document.getElementById('statsWindow').value;
-      const d = await api('/api/admin/stats?days=' + days);
-      document.getElementById('statsMeta').textContent = `${d.window_days}-day window`;
+      const sel = document.getElementById('usageMonth');
+      const chosen = sel.value;
+      const d = await api('/api/admin/usage' + (chosen ? '?month=' + chosen : ''));
+      const desired = (d.months || []).map(m => `<option value="${m}">${m}</option>`).join('');
+      if (sel.innerHTML !== desired) { sel.innerHTML = desired || `<option value="${d.month}">${d.month}</option>`; }
+      sel.value = d.month;
+      document.getElementById('usageMeta').textContent = `calendar month ${d.month} (Pacific time)`;
+      const totalsRow = (l, t, s, f) => `<tr><td><strong>${esc(l)}</strong></td><td>${t}</td><td>${s}</td><td>${f}</td></tr>`;
+      const fill = (id, rows, empty) => {
+        document.getElementById(id).innerHTML = rows.length ? rows.join('') : `<tr><td colspan="4" class="empty-notice">${empty}</td></tr>`;
+      };
+      fill('usageClientTbody', (d.clients || []).map(r => totalsRow(r.label, r.total, r.success, r.failed)), 'No requests recorded this month.');
+      fill('usageKeysTbody', (d.keys || []).map(r => totalsRow(r.label, r.total, r.success, r.failed)), 'No requests recorded this month.');
       const failsByModel = {};
-      for (const f of d.failures || []) (failsByModel[f.model] ||= []).push(f);
-      const rows = d.models || [];
-      document.getElementById('statsTbody').innerHTML = rows.length ? rows.map(m => {
-        const rateCls = m.success_rate >= 95 ? 'tag-ready' : m.success_rate >= 80 ? 'tag-cooldown' : 'tag-off';
+      for (const f of d.failures_model || []) (failsByModel[f.model] ||= []).push(f);
+      fill('usageModelsTbody', (d.models || []).map(m => {
         const reasons = (failsByModel[m.model] || [])
           .map(f => `<span class="status-tag tag-off" style="margin:2px" title="${esc(f.code)}">${esc(f.code)} &times;${f.n}</span>`).join(' ') || '—';
-        return `<tr>
-          <td><strong>${esc(m.model)}</strong></td>
-          <td>${m.total}</td>
-          <td>${m.success}</td>
-          <td>${m.failed}</td>
-          <td><span class="status-tag ${rateCls}">${m.success_rate}%</span></td>
-          <td>${reasons}</td>
-        </tr>`;
-      }).join('') : '<tr><td colspan="6" class="empty-notice">No statistics recorded yet.</td></tr>';
+        return `<tr><td><strong>${esc(m.model)}</strong></td><td>${m.total}</td><td>${m.success}</td><td>${m.failed}</td><td>${reasons}</td></tr>`;
+      }), 'No requests recorded this month.');
+      buildMatrix('usageMatrixClientHead', 'usageMatrixClient', d.matrix_client || []);
+      buildMatrix('usageMatrixGeminiHead', 'usageMatrixGemini', d.matrix_gemini || []);
     } catch (err) { console.error(err); }
   }
 

@@ -10,8 +10,7 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 * Google's responses — successes and errors alike — are relayed to the client exactly as received
 * Per-key and per-model usage tracking in a web dashboard
 * Automatic model discovery from Google, served from a local cache so `/v1beta/models` answers instantly
-* Web dashboard for managing keys, usage, cooldown status, and full request logs with payload inspection
-* Per-model success/failure statistics with failure reasons, kept for a rolling 30 days
+* Web dashboard for managing keys, usage, cooldown status, detailed request logs, and per-key/per-model analytics
 * SQLite storage — no external database needed
 * Docker and Docker Compose support
 * Simple API authentication with your own proxy API keys
@@ -145,7 +144,7 @@ switch once so `docker compose pull` follows the new name:
 
 # Dashboard
 
-Open `http://YOUR_SERVER_IP:9009` and sign in. The dashboard has six tabs:
+Open `http://YOUR_SERVER_IP:9009` and sign in. The dashboard has five tabs:
 
 | Tab | What it does |
 | --- | --- |
@@ -153,8 +152,7 @@ Open `http://YOUR_SERVER_IP:9009` and sign in. The dashboard has six tabs:
 | **Gemini API Keys** | Add and remove your Google Gemini keys |
 | **Client Keys** | Generate and manage the API keys your applications use |
 | **How to Use** | Copy-paste API examples for calling the proxy |
-| **Request Logs** | Every generation attempt with time, model, key, attempt number, and result. Filter by model/result or search; click a row to inspect the exact request/response payloads (API keys masked) |
-| **Model Stats** | Rolling 30-day success/failure rates per model with failure reasons — key-independent, for spotting unreliable models |
+| **Statistics & Logs** | Two views: Analytics (calendar-month totals and matrices per client key, Gemini key and model, with failure reasons) and Request Logs (detailed 7-day debugging log with payload inspection) |
 
 Add your Google keys through the dashboard instead of pasting them directly
 into your applications or workflows.
@@ -268,9 +266,9 @@ The proxy uses SQLite (stored at `./data/ai-studio-proxy.db` next to your
 * Administrator account
 * Client API keys
 * Gemini API keys
-* Usage records and cooldown state
-* Request logs (max 1,000 entries and max 7 days — whichever trims first)
-* Per-model statistics (rolling 30 days)
+* Usage history — one row per request with client key, Gemini key, model and outcome (kept permanently)
+* Detailed debug logs with payloads (max 1,000 entries and max 7 days — whichever trims first)
+* Cooldown state
 
 The directory is mounted as a bind mount by Docker Compose, survives restarts
 and image upgrades, and needs no manual permission fixes. Back up the `data/`

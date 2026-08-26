@@ -35,8 +35,8 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 
 - Every request is attempted exactly once on the best available key (least-used ready, else soonest-expiring cooldown); the upstream response is always relayed as-is. Do not reintroduce retry/fallback logic without asking.
 - Cooldowns have exactly two cases: transient failures bench a key 60 s (`TRANSIENT_COOLDOWN_SECONDS`), daily-quota benches until Pacific midnight. Don't reintroduce other cooldown sources without asking.
-- `model_stats` table is write-only observability; routing/cooldown logic must never read it.
-- Retention (hourly sweep): usage rows reset at Pacific midnight, expired cooldowns deleted immediately, request logs capped at 1,000 entries AND 7 days, model stats kept 30 days.
+- `usage` table is the single source of truth for every request (client key, Gemini key, model, outcome, status, error code); it is kept forever and read by routing only through ok=1/since-reset filters.
+- `request_logs` holds detailed debugging payloads; app logic never reads it — only the dashboard Logs view does. Retention (hourly sweep): expired cooldowns deleted immediately, request logs capped at 1,000 entries AND 7 days, `usage` rows never pruned.
 - Hot-path SQL goes through `prep(sql)`, which caches compiled statements — only for **fixed** SQL strings. Never pass dynamically interpolated SQL (filters, IN-lists) to `prep()`; that leaks memory. Terminal bookkeeping per request (usage insert, cooldown upsert, request log, model stat) runs in a single transaction.
 - Schema changes are additive `CREATE TABLE IF NOT EXISTS` only — legacy ALTER-migrations were deliberately removed; don't add migration shims.
 - `maskSecrets()` caches key→mask pairs; invalidate via `invalidateSecretMaskCache()` wherever keys are inserted/deleted.

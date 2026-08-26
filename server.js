@@ -43,6 +43,9 @@ db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA busy_timeout = 5000;
   PRAGMA synchronous = NORMAL;
+  DROP TABLE IF EXISTS requests;
+  DROP TABLE IF EXISTS model_stats;
+  DROP TABLE IF EXISTS request_logs;
   CREATE TABLE IF NOT EXISTS api_keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,
@@ -67,13 +70,6 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS models (
     name TEXT PRIMARY KEY
   );
-  CREATE TABLE IF NOT EXISTS requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    model TEXT NOT NULL,
-    key_id INTEGER,
-    status INTEGER NOT NULL,
-    created_at INTEGER NOT NULL
-  );
   CREATE TABLE IF NOT EXISTS model_key_state (
     model TEXT NOT NULL,
     key_id INTEGER NOT NULL,
@@ -97,26 +93,27 @@ db.exec(`
     request_body TEXT,
     response_body TEXT
   );
-  CREATE TABLE IF NOT EXISTS app_meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS model_stats (
+  CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);
+  CREATE TABLE IF NOT EXISTS usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at INTEGER NOT NULL,
     model TEXT NOT NULL,
+    client_key_id INTEGER,
+    gemini_key_id INTEGER,
+    outcome TEXT NOT NULL,
     ok INTEGER NOT NULL,
     status INTEGER,
     error_code TEXT
   );
-  CREATE INDEX IF NOT EXISTS idx_requests_model_key_success_time ON requests(model, key_id, status, created_at);
-  CREATE INDEX IF NOT EXISTS idx_requests_model_success_time ON requests(model, status, created_at);
-  CREATE INDEX IF NOT EXISTS idx_requests_created_at ON requests(created_at);
-  CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);
-  CREATE INDEX IF NOT EXISTS idx_model_stats_model_time ON model_stats(model, created_at);
-  CREATE INDEX IF NOT EXISTS idx_model_stats_created ON model_stats(created_at);
+  CREATE INDEX IF NOT EXISTS idx_usage_model_ok_time ON usage(model, ok, created_at, gemini_key_id);
+  CREATE INDEX IF NOT EXISTS idx_usage_client_time ON usage(client_key_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_usage_gemini_time ON usage(gemini_key_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_usage_created ON usage(created_at);
+  CREATE TABLE IF NOT EXISTS app_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
-
 function json(response, status, value) {
   if (response.writableEnded || response.destroyed) return;
   const body = JSON.stringify(value);
@@ -189,13 +186,17 @@ function csrfValid(request) {
   return Boolean(session && cookieToken && headerToken && constantTimeEqual(cookieToken, headerToken) && constantTimeEqual(session.csrfToken, headerToken));
 }
 
-function localKeyIsValid(request) {
+function resolveClientKey(request) {
   const query = new URL(request.url, "http://localhost").searchParams;
   const supplied = request.headers["x-proxy-api-key"] ||
     request.headers["x-goog-api-key"] ||
     query.get("key") || "";
-  if (!supplied) return false;
-  return Boolean(prep("SELECT id FROM client_keys WHERE key_hash = ?").get(hashValue(supplied)));
+  if (!supplied) return null;
+  return prep("SELECT id, label FROM client_keys WHERE key_hash = ?").get(hashValue(supplied)) || null;
+}
+
+function localKeyIsValid(request) {
+  return Boolean(resolveClientKey(request));
 }
 
 function clientAddress(request) {
@@ -301,38 +302,62 @@ function getMeta(key) {
   return db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key)?.value || null;
 }
 
+function laOffsetMinutes(at) {
+  const offsetPart = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles", timeZoneName: "longOffset",
+  }).formatToParts(new Date(at)).find((part) => part.type === "timeZoneName")?.value || "GMT+00:00";
+  const offsetMatch = offsetPart.match(/GMT([+-])(\d{2}):(\d{2})/);
+  return offsetMatch
+    ? (Number(offsetMatch[2]) * 60 + Number(offsetMatch[3])) * (offsetMatch[1] === "+" ? 1 : -1)
+    : 0;
+}
+
+function laDayStartUtc(year, monthIndex0, day) {
+  const naive = Date.UTC(year, monthIndex0, day);
+  return naive - laOffsetMinutes(naive + 12 * 60 * 60 * 1000) * 60_000;
+}
+
 function pacificDayStart(now = Date.now()) {
   const dateParts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit",
   }).formatToParts(new Date(now));
   const values = Object.fromEntries(dateParts.map((part) => [part.type, part.value]));
-  const offsetPart = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Los_Angeles", timeZoneName: "longOffset",
-  }).formatToParts(new Date(now)).find((part) => part.type === "timeZoneName")?.value || "GMT+00:00";
-  const offsetMatch = offsetPart.match(/GMT([+-])(\d{2}):(\d{2})/);
-  const offsetMinutes = offsetMatch
-    ? (Number(offsetMatch[2]) * 60 + Number(offsetMatch[3])) * (offsetMatch[1] === "+" ? 1 : -1)
-    : 0;
-  return Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day)) - offsetMinutes * 60_000;
+  return laDayStartUtc(Number(values.year), Number(values.month) - 1, Number(values.day));
+}
+
+function pacificMonthString(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit",
+  }).formatToParts(new Date(now));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}`;
+}
+
+function pacificMonthRange(month) {
+  const [year, month1] = month.split("-").map(Number);
+  const start = laDayStartUtc(year, month1 - 1, 1);
+  const end = month1 === 12 ? laDayStartUtc(year + 1, 0, 1) : laDayStartUtc(year, month1, 1);
+  return [start, end];
 }
 
 function usageStats() {
   const start = pacificDayStart();
-  return db.prepare(`
+  return prep(`
     SELECT m.name AS model, k.id AS key_id, k.label,
            substr(k.api_key, 1, 6) || '...' AS masked,
-           COUNT(r.id) AS today, MAX(r.created_at) AS last_request,
+           COUNT(u.id) AS today, MAX(u.created_at) AS last_request,
            COALESCE(s.cooldown_until, 0) AS cooldown_until,
            COALESCE(s.cooldown_reason, '') AS cooldown_reason
-    FROM (SELECT name FROM models UNION SELECT DISTINCT model AS name FROM requests UNION SELECT DISTINCT model AS name FROM model_key_state) m
+    FROM (SELECT name FROM models
+          UNION SELECT DISTINCT model AS name FROM usage WHERE ok = 1 AND created_at >= ?
+          UNION SELECT DISTINCT model AS name FROM model_key_state) m
     CROSS JOIN (SELECT id, label, api_key FROM api_keys) k
-    LEFT JOIN requests r ON r.model = m.name AND r.key_id = k.id
-      AND r.status >= 200 AND r.status < 300 AND r.created_at >= ?
+    LEFT JOIN usage u ON u.model = m.name AND u.gemini_key_id = k.id AND u.ok = 1 AND u.created_at >= ?
     LEFT JOIN model_key_state s ON s.model = m.name AND s.key_id = k.id
     GROUP BY m.name, k.id, k.label, k.api_key, s.cooldown_until, s.cooldown_reason
     HAVING today > 0 OR cooldown_until > ?
     ORDER BY m.name, k.id
-  `).all(start, Date.now());
+  `).all(start, start, Date.now());
 }
 
 let secretMaskCache = null;
@@ -375,14 +400,14 @@ function recordLog(entry) {
   }
 }
 
-const MODEL_STATS_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const REQUEST_LOG_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-function recordModelStat(model, ok, status, errorCode) {
+
+function recordUsageRow(model, clientKeyId, geminiKeyId, outcome, ok, status, errorCode) {
   try {
-    prep("INSERT INTO model_stats (created_at,model,ok,status,error_code) VALUES (?,?,?,?,?)")
-      .run(Date.now(), model, ok ? 1 : 0, status ?? null, errorCode);
+    prep("INSERT INTO usage (created_at,model,client_key_id,gemini_key_id,outcome,ok,status,error_code) VALUES (?,?,?,?,?,?,?,?)")
+      .run(Date.now(), model, clientKeyId ?? null, geminiKeyId ?? null, outcome, ok ? 1 : 0, status ?? null, errorCode ?? null);
   } catch (error) {
-    log("error", "Stats", `failed to record model stat: ${error.message}`);
+    log("error", "Usage", `failed to record usage row: ${error.message}`);
   }
 }
 
@@ -393,12 +418,10 @@ function sweepDailyReset() {
     log("info", "Usage", "Pacific midnight reset - cleared previous day's usage and expired cooldowns");
   }
   lastSweptUsageDay = today;
-  const purgedRequests = prep("DELETE FROM requests WHERE created_at < ?").run(today).changes;
   const purgedCooldowns = prep("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now()).changes;
   const purgedLogs = prep("DELETE FROM request_logs WHERE id <= (SELECT id FROM request_logs ORDER BY id DESC LIMIT 1 OFFSET ?)").run(MAX_LOG_ENTRIES).changes;
   const purgedAgedLogs = prep("DELETE FROM request_logs WHERE created_at < ?").run(Date.now() - REQUEST_LOG_RETENTION_MS).changes;
-  const purgedStats = prep("DELETE FROM model_stats WHERE created_at < ?").run(Date.now() - MODEL_STATS_RETENTION_MS).changes;
-  if (purgedRequests || purgedCooldowns || purgedLogs || purgedAgedLogs || purgedStats) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s), ${purgedLogs} excess log entr(ies), ${purgedAgedLogs} aged log entr(ies), ${purgedStats} old model stat row(s)`);
+  if (purgedCooldowns || purgedLogs || purgedAgedLogs) dbg("Usage", `sweep removed ${purgedCooldowns} expired cooldown(s), ${purgedLogs} excess log entr(ies), ${purgedAgedLogs} aged log entr(ies)`);
 }
 
 function setCooldownUntil(model, keyId, timestamp, reason) {
@@ -634,7 +657,8 @@ async function handleGemini(request, response, model) {
   const mark = (type, detail) => events.push({ t: Date.now() - startedAt, type, detail });
 
   mark("receive", `${request.method} ${requestPath(request)} from ${clientAddress(request)}`);
-  if (!localKeyIsValid(request)) {
+  const clientKey = resolveClientKey(request);
+  if (!clientKey) {
     log("warn", "Auth", `[${short}] rejected ${request.method} ${requestPath(request)}: invalid client key from ${clientAddress(request)}`);
     mark("reject", "invalid client API key");
     recordLog({ model, traceId, events, status: 401, outcome: "rejected", errorCode: "INVALID_CLIENT_KEY" });
@@ -657,7 +681,7 @@ async function handleGemini(request, response, model) {
     recordLog({ model, traceId, events, status: 503, outcome: "rejected", errorCode: "NO_KEYS_CONFIGURED" });
     return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "No Gemini API keys are configured" } });
   }
-  const usage = prep("SELECT key_id, COUNT(*) AS count FROM requests WHERE model = ? AND status >= 200 AND status < 300 AND created_at >= ? GROUP BY key_id")
+  const usage = prep("SELECT gemini_key_id AS key_id, COUNT(*) AS count FROM usage WHERE model = ? AND ok = 1 AND created_at >= ? GROUP BY gemini_key_id")
     .all(model, pacificDayStart()).reduce((map, row) => map.set(row.key_id, row.count), new Map());
   const coolingRows = new Map(prep("SELECT key_id, cooldown_until, cooldown_reason FROM model_key_state WHERE model = ?")
     .all(model).filter((row) => row.cooldown_until > Date.now()).map((row) => [row.key_id, row]));
@@ -706,7 +730,8 @@ async function handleGemini(request, response, model) {
     mark("relay", `relaying Google's response as-is to the client (status ${result.status})`);
     try {
       db.exec("BEGIN");
-      if (ok) prep("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, selected.id, result.status, Date.now());
+      prep("INSERT INTO usage (created_at,model,client_key_id,gemini_key_id,outcome,ok,status,error_code) VALUES (?,?,?,?,?,?,?,?)")
+        .run(Date.now(), model, clientKey.id, selected.id, ok ? "success" : "failed", ok ? 1 : 0, result.status, ok ? null : (code || `HTTP_${result.status}`));
       if (cooldownUntil !== null) prep("INSERT INTO model_key_state (model,key_id,cooldown_until,cooldown_reason) VALUES (?,?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,cooldown_reason=excluded.cooldown_reason")
         .run(model, selected.id, cooldownUntil, cooldownReason);
       prep("INSERT INTO request_logs (created_at,model,key_id,key_label,key_masked,status,outcome,error_code,attempt,trace_id,events,request_body,response_body) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
@@ -716,7 +741,6 @@ async function handleGemini(request, response, model) {
           code ? maskSecrets(String(code)) : null, 1, traceId,
           maskSecrets(JSON.stringify(events)),
           maskSecrets(clipBody(body)), maskSecrets(clipBody(result.body)));
-      recordModelStat(model, ok, result.status, ok ? null : (code || `HTTP_${result.status}`));
       db.exec("COMMIT");
     } catch (txError) {
       try { db.exec("ROLLBACK"); } catch {}
@@ -740,8 +764,8 @@ async function handleGemini(request, response, model) {
   }
   log("error", "Gemini", `[${short}] ${model}: no upstream response`);
   mark("fail", "Google did not respond; proxy generated a 502");
+  recordUsageRow(model, clientKey?.id, selected?.id, "failed", false, 502, "NO_UPSTREAM_RESPONSE");
   recordLog({ model, traceId, events, status: 502, outcome: "failed", errorCode: "NO_UPSTREAM_RESPONSE", attempt: 1, requestBody: body });
-  recordModelStat(model, false, 502, null);
   return json(response, 502, { error: { code: 502, status: "BAD_GATEWAY", message: "Gemini did not respond on any attempted key" } });
 }
 
@@ -875,20 +899,53 @@ async function handleRequest(request, response) {
     if (!entry) return json(response, 404, { error: "Log entry not found" });
     return json(response, 200, entry);
   }
-  if (url.pathname === "/api/admin/stats" && request.method === "GET") {
-    const days = Math.min(30, Math.max(1, Number(url.searchParams.get("days")) || 30));
-    const since = Date.now() - days * 24 * 60 * 60 * 1000;
-    const models = db.prepare(`
-      SELECT model, COUNT(*) AS total, SUM(ok) AS success, COUNT(*) - SUM(ok) AS failed,
-             ROUND(100.0 * SUM(ok) / COUNT(*), 1) AS success_rate
-      FROM model_stats WHERE created_at >= ? GROUP BY model ORDER BY total DESC
-    `).all(since);
-    const failures = db.prepare(`
-      SELECT model, IFNULL(error_code, 'unknown') AS code, COUNT(*) AS n
-      FROM model_stats WHERE ok = 0 AND created_at >= ? GROUP BY model, error_code ORDER BY n DESC
-    `).all(since);
-    return json(response, 200, { window_days: days, models, failures });
+  if (url.pathname === "/api/admin/usage" && request.method === "GET") {
+    const monthParam = url.searchParams.get("month") || "";
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam) ? monthParam : pacificMonthString();
+    const [start, end] = pacificMonthRange(month);
+    const range = prep("SELECT MIN(created_at) AS lo, MAX(created_at) AS hi FROM usage").get();
+    const months = [];
+    if (range.lo && range.hi) {
+      let cursor = range.hi;
+      while (cursor >= range.lo && months.length < 36) {
+        const label = pacificMonthString(cursor);
+        if (!months.includes(label)) months.push(label);
+        const [y, m1] = label.split("-").map(Number);
+        cursor = laDayStartUtc(m1 === 1 ? y - 1 : y, m1 === 1 ? 11 : m1 - 2, 1);
+      }
+    }
+    if (!months.includes(month)) months.unshift(month);
+    const clients = prep(`SELECT COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
+        COUNT(*) AS total, SUM(u.ok) AS success, COUNT(*) - SUM(u.ok) AS failed
+      FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
+      WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id ORDER BY total DESC`).all(start, end);
+    const keys = prep(`SELECT COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
+        COUNT(*) AS total, SUM(u.ok) AS success, COUNT(*) - SUM(u.ok) AS failed
+      FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
+      WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id ORDER BY total DESC`).all(start, end);
+    const models = prep(`SELECT model, COUNT(*) AS total, SUM(ok) AS success, COUNT(*) - SUM(ok) AS failed
+      FROM usage WHERE created_at >= ? AND created_at < ? GROUP BY model ORDER BY total DESC`).all(start, end);
+    const matrix_client = prep(`SELECT COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
+        u.model AS model, COUNT(*) AS total
+      FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
+      WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id, u.model ORDER BY total DESC`).all(start, end);
+    const matrix_gemini = prep(`SELECT COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
+        u.model AS model, COUNT(*) AS total
+      FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
+      WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id, u.model ORDER BY total DESC`).all(start, end);
+    const failures_model = prep(`SELECT model, IFNULL(error_code, 'unknown') AS code, COUNT(*) AS n
+      FROM usage WHERE ok = 0 AND created_at >= ? AND created_at < ? GROUP BY model, error_code ORDER BY n DESC`).all(start, end);
+    const failures_client = prep(`SELECT COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
+        IFNULL(u.error_code, 'unknown') AS code, COUNT(*) AS n
+      FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
+      WHERE u.ok = 0 AND u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id, u.error_code ORDER BY n DESC`).all(start, end);
+    const failures_gemini = prep(`SELECT COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
+        IFNULL(u.error_code, 'unknown') AS code, COUNT(*) AS n
+      FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
+      WHERE u.ok = 0 AND u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id, u.error_code ORDER BY n DESC`).all(start, end);
+    return json(response, 200, { month, months, clients, keys, models, matrix_client, matrix_gemini, failures_model, failures_client, failures_gemini });
   }
+
   if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
     log("info", "Admin", `manual model refresh requested`);
     const result = await refreshModelsOnce(syntheticModelsRequest());
@@ -919,9 +976,9 @@ async function handleRequest(request, response) {
   if (keyMatch && request.method === "DELETE") {
     const keyId = Number(keyMatch[1]);
     const deleted = db.prepare("SELECT label FROM api_keys WHERE id=?").get(keyId);
-    db.prepare("DELETE FROM requests WHERE key_id=?").run(keyId);
-    db.prepare("DELETE FROM model_key_state WHERE key_id=?").run(keyId);
-    db.prepare("DELETE FROM api_keys WHERE id=?").run(keyId);
+    prep("DELETE FROM usage WHERE gemini_key_id=?").run(keyId);
+    prep("DELETE FROM model_key_state WHERE key_id=?").run(keyId);
+    prep("DELETE FROM api_keys WHERE id=?").run(keyId);
     invalidateSecretMaskCache();
     log("info", "Admin", `Gemini key #${keyId}${deleted ? ` ('${deleted.label}')` : ""} deleted with its usage data`);
     return json(response, 200, { ok: true });
