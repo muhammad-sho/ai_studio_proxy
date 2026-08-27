@@ -10,7 +10,7 @@ const { requestPath, parseApiRoute, parseUploadRoute, routeFamily, statsModelNam
 const { createDashboardAssets } = require("./lib/dashboard-assets");
 const { createDatabase } = require("./lib/database");
 const { createAuth } = require("./lib/auth");
-const { createUsage } = require("./lib/usage");
+const { createUsage, routingBalanceScore } = require("./lib/usage");
 const { createGeminiProxy } = require("./lib/gemini-proxy");
 const { createRequestHandler } = require("./lib/admin-routes");
 
@@ -69,7 +69,7 @@ const { handleRequest } = createRequestHandler({
   COOKIE_SESSION, COOKIE_CSRF, hashValue, invalidateSecretMaskCache,
   staticPage, sendDashboard, serveDashboardAsset,
   handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticModelsRequest,
-  usageStats, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo, getMeta,
+  usageStats, routingBalanceScore, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo, getMeta,
 });
 
 function makeServer(family) {
