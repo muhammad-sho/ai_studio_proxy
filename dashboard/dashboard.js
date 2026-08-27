@@ -71,10 +71,14 @@
     const totalReq = (data.usage || []).reduce((s, r) => s + (r.today || 0), 0);
     const models = data.models || [];
 
-    document.getElementById('ov-ck').textContent = (data.clientKeys || []).length;
-    document.getElementById('ov-gk').textContent = (data.keys || []).length;
-    document.getElementById('ov-m').textContent = models.length;
-    document.getElementById('ov-r').textContent = totalReq;
+    const setText = (id, value) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
+    };
+    setText('ov-ck', (data.clientKeys || []).length);
+    setText('ov-gk', (data.keys || []).length);
+    setText('ov-m', models.length);
+    setText('ov-r', totalReq);
 
     const rst = data.resetTimezone
       ? `Midnight Pacific (${data.resetTimezone}) · Began ${new Date(data.resetAt).toLocaleTimeString()}`
@@ -83,23 +87,26 @@
       ? `${new Date(Number(data.modelsCheckedAt)).toLocaleString()}`
       : 'Not checked yet';
 
-    document.getElementById('ov-reset').textContent = rst;
-    document.getElementById('ov-mc').textContent = mc;
+    setText('ov-reset', rst);
+    setText('ov-mc', mc);
     const cacheAge = data.modelsCheckedAt ? Date.now() - Number(data.modelsCheckedAt) : null;
     const statusEl = document.getElementById('cacheStatus');
-    if (!data.modelsCheckedAt) {
-      statusEl.textContent = ' (no cache)';
-      statusEl.style.color = 'var(--rose)';
-    } else if (cacheAge < 24 * 3600e3) {
-      statusEl.textContent = ` (fresh, ${Math.round(cacheAge/60e3)}m ago)`;
-      statusEl.style.color = 'var(--emerald)';
-    } else {
-      statusEl.textContent = ` (stale, ${Math.round(cacheAge/3600e3)}h ago)`;
-      statusEl.style.color = 'var(--amber)';
+    if (statusEl) {
+      if (!data.modelsCheckedAt) {
+        statusEl.textContent = ' (no cache)';
+        statusEl.style.color = 'var(--rose)';
+      } else if (cacheAge < 24 * 3600e3) {
+        statusEl.textContent = ` (fresh, ${Math.round(cacheAge/60e3)}m ago)`;
+        statusEl.style.color = 'var(--emerald)';
+      } else {
+        statusEl.textContent = ` (stale, ${Math.round(cacheAge/3600e3)}h ago)`;
+        statusEl.style.color = 'var(--amber)';
+      }
     }
 
     const ck = data.clientKeys || [];
-    document.getElementById('clientKeysTbody').innerHTML = ck.length
+    const clientKeysTbody = document.getElementById('clientKeysTbody');
+    if (clientKeysTbody) clientKeysTbody.innerHTML = ck.length
       ? ck.map(k => {
           const u = usageFor((pageUsage || {}).clients, k.id);
           return `<tr class="key-row" data-key-type="client" data-key-id="${k.id}" title="Click for actions">
@@ -113,7 +120,8 @@
       : '<tr><td colspan="5" class="empty-notice">No client keys configured.</td></tr>';
 
     const gk = data.keys || [];
-    document.getElementById('keysTbody').innerHTML = gk.length
+    const keysTbody = document.getElementById('keysTbody');
+    if (keysTbody) keysTbody.innerHTML = gk.length
       ? gk.map(k => {
           const u = usageFor((pageUsage || {}).keys, k.id);
           return `<tr class="key-row" data-key-type="gemini" data-key-id="${k.id}" title="Click for actions">
@@ -147,9 +155,12 @@
       return { cls: 'cell-ok', title: 'Ready' };
     }
 
+    const usageThead = document.getElementById('usageThead');
+    const usageTbody = document.getElementById('usageTbody');
+    if (!usageThead || !usageTbody) return;
     if (!us.length) {
-      document.getElementById('usageThead').innerHTML = '';
-      document.getElementById('usageTbody').innerHTML = '<tr><td colspan="2" class="empty-notice">No requests recorded in the current day window.</td></tr>';
+      usageThead.innerHTML = '';
+      usageTbody.innerHTML = '<tr><td colspan="2" class="empty-notice">No requests recorded in the current day window.</td></tr>';
       return;
     }
 
@@ -340,31 +351,58 @@
     copyText(logDebugText(currentLog), button);
   }
 
-  function showPanel(name, tabEl, updateHash = true) {
-    const validTabs = ['overview', 'gemini-keys', 'client-keys', 'request-logs', 'statistics'];
-    if (!validTabs.includes(name)) name = 'overview';
+  const PANEL_NAMES = ['overview', 'gemini-keys', 'client-keys', 'request-logs', 'statistics'];
+  const panelLoads = new Map();
+  let activePanel = 'overview';
+  let panelActivation = 0;
 
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-
-    const targetPanel = document.getElementById('panel-' + name);
-    if (targetPanel) targetPanel.classList.add('active');
-
-    const targetTab = tabEl || document.querySelector(`.nav-tab[data-tab="${name}"]`);
-    if (targetTab) targetTab.classList.add('active');
-
-    localStorage.setItem('ai_studio_proxy_tab', name);
-    if (updateHash && window.location.hash !== '#' + name) {
-      history.replaceState(null, '', '#' + name);
+  async function loadPanel(name) {
+    if (panelLoads.has(name)) return panelLoads.get(name);
+    const task = (async () => {
+      const response = await fetch('/panels/' + name + '.html');
+      if (!response.ok) throw Error('Could not load dashboard panel');
+      const target = document.getElementById('panel-' + name);
+      if (!target) return;
+      target.innerHTML = await response.text();
+      setupPanel(name);
+    })();
+    panelLoads.set(name, task);
+    try {
+      return await task;
+    } catch (error) {
+      panelLoads.delete(name);
+      throw error;
     }
-    void load();
+  }
+
+  function markActivePanel(name, tabEl, updateHash) {
+    document.querySelectorAll('.panel').forEach((panel) => panel.classList.toggle('active', panel.id === 'panel-' + name));
+    document.querySelectorAll('.nav-tab').forEach((tab) => tab.classList.toggle('active', tab === (tabEl || document.querySelector(`.nav-tab[data-tab="${name}"]`))));
+    localStorage.setItem('ai_studio_proxy_tab', name);
+    if (updateHash && window.location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+  }
+
+  async function activatePanel(name, tabEl, updateHash = true) {
+    if (!PANEL_NAMES.includes(name)) name = 'overview';
+    activePanel = name;
+    const activation = ++panelActivation;
+    markActivePanel(name, tabEl, updateHash);
+    try {
+      await loadPanel(name);
+      if (activation === panelActivation) void load();
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  function showPanel(name, tabEl, updateHash = true) {
+    void activatePanel(name, tabEl, updateHash);
   }
 
   function initActiveTab() {
     const hash = window.location.hash.replace(/^#/, '');
     const saved = localStorage.getItem('ai_studio_proxy_tab');
-    const initial = hash || saved || 'overview';
-    showPanel(initial, null, true);
+    showPanel(hash || saved || 'overview', null, true);
   }
 
   window.addEventListener('hashchange', () => {
@@ -373,7 +411,7 @@
   });
 
   async function load() {
-    const active = document.querySelector('.panel.active')?.id.replace('panel-', '') || 'overview';
+    const active = activePanel;
     if (active === 'request-logs') return loadLogs(false);
     if (active === 'statistics') return loadUsage();
     try {
@@ -581,20 +619,10 @@
   });
   async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
 
-  async function injectPanels() {
-    const panels = ['overview', 'gemini-keys', 'client-keys', 'request-logs', 'statistics'];
-    await Promise.all(panels.map(async (name) => {
-      const res = await fetch('/panels/' + name + '.html');
-      const html = await res.text();
-      const el = document.getElementById('panel-' + name);
-      if (el) el.innerHTML = html;
-    }));
-  }
-
-  (async () => {
-    await injectPanels();
-    initUsageColumnFocus();
-  document.getElementById('clientKeyForm').onsubmit = async (event) => {
+  function bindClientKeyForm() {
+    const form = document.getElementById('clientKeyForm');
+    if (!form) return;
+    form.onsubmit = async (event) => {
     event.preventDefault();
     try {
       const form = new FormData(event.target);
@@ -605,7 +633,12 @@
     } catch (err) { alert(err.message); }
   };
 
-  document.getElementById('keyForm').onsubmit = async (event) => {
+  }
+
+  function bindGeminiKeyForm() {
+    const form = document.getElementById('keyForm');
+    if (!form) return;
+    form.onsubmit = async (event) => {
     event.preventDefault();
     const resultDiv = document.getElementById('keyImportResult');
     try {
@@ -635,6 +668,15 @@
     } catch (err) { alert(err.message); resultDiv.style.display = 'none'; }
   };
 
+  }
+
+  function setupPanel(name) {
+    if (name === 'overview') initUsageColumnFocus();
+    if (name === 'client-keys') bindClientKeyForm();
+    if (name === 'gemini-keys') bindGeminiKeyForm();
+  }
+
+  (async () => {
     initActiveTab();
     const POLL_MS = 5000;
     setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
