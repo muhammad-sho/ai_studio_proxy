@@ -3,7 +3,7 @@
 
   function syncModelFilter(models) {
     const sel = document.getElementById('logModel');
-    const desired = '<option value="">All models</option>' + models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    const desired = '<option value="">All models and request types</option>' + models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
     if (sel.innerHTML === desired) return;
     const current = sel.value;
     sel.innerHTML = desired;
@@ -100,7 +100,7 @@
       document.getElementById('logModalBody').innerHTML = `
         <dl class="log-summary">
           ${summary('Time', new Date(Number(l.created_at)).toLocaleString())}
-          ${summary('Model', `<strong>${esc(l.model)}</strong>`)}
+          ${summary('Model / request type', `<strong>${esc(l.model)}</strong>`)}
           ${summary('Gemini key', l.key_label ? `${esc(l.key_label)} <code style="font-family:'JetBrains Mono',monospace">(${esc(l.key_masked)})</code>` : '—')}
           ${summary('Attempts', String(l.attempt || 0))}
           ${summary('Result', `${resultTag(l)}${l.error_code ? ` · ${esc(l.error_code)}` : ''}`)}
