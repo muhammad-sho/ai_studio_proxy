@@ -182,6 +182,11 @@
       letter-spacing: 0.04em;
       margin-bottom: 0;
     }
+    .metric-note {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
     .metric-val {
       font-size: 36px;
       font-weight: 800;
