@@ -148,3 +148,4 @@ The dashboard lets you:
 ## Repository
 
 [GitHub Repository](https://github.com/muhammad-sho/ai_studio_proxy?utm_source=chatgpt.com)
+\n\nUsage history is retained forever by default. Set `USAGE_RETENTION_DAYS` in `.env` only when bounded history is desired.\n
