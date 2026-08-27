@@ -57,7 +57,7 @@ const { handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticM
   REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, MODELS_CACHE_TTL_MS, LOG_BODY_MAX_BYTES,
   poolKeys, setMeta, getMeta, pacificDayStart, resolveClientKey, clientAddress,
   maskSecrets, clipBody, upstreamErrorPayload, errorCodeFromPayload, recordLog,
-  recordUsageRow, setCooldown, setCooldownUntil, nextPacificReset, isOpenAiCompatibilityRoute,
+  recordUsageRow, setCooldown, setCooldownUntil, nextPacificReset, isOpenAiCompatibilityRoute, classifyRoute,
 });
 const { handleRequest } = createRequestHandler({
   crypto, db, prep, log, dbg, maskKey, json, securityHeaders, readBody, MAX_BODY_BYTES, SESSION_TTL_MS,
