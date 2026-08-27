@@ -2,8 +2,8 @@
 
 ## Stack
 
-- Zero-dependency Node.js (22+): `server.js` (~1000 lines) is the entire backend — HTTP server, SQLite via built-in `node:sqlite`, upstream forwarding, and the embedded setup/sign-in HTML pages (inline strings).
-- `dashboard.html` (~1400 lines) is the entire UI: CSS + JS + markup in one file, no build step.
+- Zero-dependency Node.js (22+): `server.js` (~1000 lines) is the entire backend — HTTP server, SQLite via built-in `node:sqlite`, upstream forwarding, and the dashboard/setup/sign-in UI.
+- `dashboard.html` is the entire main UI (CSS + JS + markup in one file); `setup.html` and `signin.html` are the two minimal auth pages, lazily read from disk only when first requested (`staticPage()`). No build step.
 - No `package.json`, no test framework, no linter. Don't add dependencies or tooling without being asked.
 
 ## Verification (no test suite exists)
