@@ -8,7 +8,13 @@ test("recognizes OpenAI compatibility paths under supported Gemini API versions"
   for (const pathname of ["/v1alpha/openai/models", "/v1beta/openai/chat/completions", "/v1/openai/embeddings"]) {
     assert.equal(isOpenAiCompatibilityRoute(pathname), true);
   }
+  for (const pathname of ["/v1/chat/completions", "/v1/embeddings", "/v1/images/generations"]) {
+    assert.equal(isOpenAiCompatibilityRoute(pathname, { authorization: "Bearer proxy-client-key" }), true);
+  }
   assert.equal(isOpenAiCompatibilityRoute("/v1beta/models"), false);
+  assert.equal(isOpenAiCompatibilityRoute("/v1/chat/completions", { "x-goog-api-key": "proxy-client-key" }), false);
+  assert.equal(isOpenAiCompatibilityRoute("/v1/models", { authorization: "Bearer proxy-client-key" }), true);
+  assert.equal(isOpenAiCompatibilityRoute("/v1/models", { "x-goog-api-key": "proxy-client-key" }), false);
   assert.equal(isOpenAiCompatibilityRoute("/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"), false);
 });
 
@@ -46,4 +52,6 @@ test("does not treat malformed or missing model bodies as a real model", () => {
 test("short-circuits metadata classification before inspecting request bodies", () => {
   const route = classifyRoute("/v1beta/openai/models", "GET", null, null, Buffer.from("not-json"));
   assert.deepEqual(route, { kind: "metadata", model: null, trackUsage: false });
+  const alias = classifyRoute("/v1/models", "GET", null, null, Buffer.from("not-json"), { authorization: "Bearer proxy-client-key" });
+  assert.deepEqual(alias, { kind: "metadata", model: null, trackUsage: false });
 });
