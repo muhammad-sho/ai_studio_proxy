@@ -65,17 +65,7 @@ to:
 http://YOUR_SERVER_IP:9009
 ```
 
-And change the **API key header**:
-
-```text
-x-goog-api-key
-```
-
-to:
-
-```text
-x-proxy-api-key
-```
+Put your **client key** in the **same `x-goog-api-key` header** Google uses.
 
 ### Before
 
@@ -90,12 +80,12 @@ curl https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:ge
 
 ```bash
 curl http://YOUR_SERVER_IP:9009/v1beta/models/gemini-2.5-flash:generateContent \
-  -H "x-proxy-api-key: YOUR_CLIENT_KEY" \
+  -H "x-goog-api-key: YOUR_CLIENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"contents":[{"parts":[{"text":"Hello"}]}]}'
 ```
 
-The request format stays the same.
+Only the URL and the key value change — the request format stays identical to Google's.
 
 Your application uses **one endpoint and one client key**, while the proxy routes requests across your Gemini API keys.
 

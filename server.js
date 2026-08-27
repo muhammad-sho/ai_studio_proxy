@@ -130,7 +130,7 @@ function securityHeaders(response) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, x-goog-api-key, x-proxy-api-key, x-goog-upload-offset, x-goog-upload-command, x-goog-upload-protocol, x-goog-upload-header-content-length, x-goog-upload-header-content-type, x-goog-upload-status");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, x-goog-api-key, x-goog-upload-offset, x-goog-upload-command, x-goog-upload-protocol, x-goog-upload-header-content-length, x-goog-upload-header-content-type, x-goog-upload-status");
   response.setHeader("Access-Control-Max-Age", "86400");
 }
 
@@ -189,8 +189,7 @@ function csrfValid(request) {
 
 function resolveClientKey(request) {
   const query = new URL(request.url, "http://localhost").searchParams;
-  const supplied = request.headers["x-proxy-api-key"] ||
-    request.headers["x-goog-api-key"] ||
+  const supplied = request.headers["x-goog-api-key"] ||
     query.get("key") || "";
   if (!supplied) return null;
   return prep("SELECT id, label FROM client_keys WHERE key_hash = ?").get(hashValue(supplied)) || null;
@@ -499,7 +498,7 @@ function forwardToGemini(context, body, key, opts = {}) {
     if (upstreamUrl.searchParams.has("key")) upstreamUrl.searchParams.set("key", key);
     const droppedHeaders = new Set(["host", "connection", "keep-alive", "transfer-encoding", "upgrade",
       "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer",
-      "authorization", "cookie", "content-length", "x-goog-api-key", "x-proxy-api-key"]);
+      "authorization", "cookie", "content-length", "x-goog-api-key"]);
     const headers = {};
     for (const [name, value] of Object.entries(context.headers || {})) {
       const lower = name.toLowerCase();
