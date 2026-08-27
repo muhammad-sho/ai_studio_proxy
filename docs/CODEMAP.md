@@ -23,7 +23,7 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 
 | File | Entry point | Owns |
 |---|---|---|
-| `server.js` | application bootstrap | Dependency assembly, listeners, shutdown, hourly sweep |
+| `server.js` | application bootstrap | Dependency assembly, listeners, shutdown, minute sweep |
 | `lib/config.js` | `loadConfig()` | Environment defaults, limits, and validated integer parsing |
 | `lib/database.js` | `createDatabase()` | SQLite instance, schema, prepared-statement cache |
 | `lib/http.js` | `createHttpHelpers()` | JSON output, security headers, bounded and abort-safe body reads |
