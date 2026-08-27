@@ -43,8 +43,6 @@ db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA busy_timeout = 5000;
   PRAGMA synchronous = NORMAL;
-  DROP TABLE IF EXISTS requests;
-  DROP TABLE IF EXISTS model_stats;
   CREATE TABLE IF NOT EXISTS api_keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,

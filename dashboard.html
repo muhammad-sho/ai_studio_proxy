@@ -576,28 +576,6 @@
     .data-table td { text-align: center; vertical-align: middle; }
     .data-table .empty-cell { opacity: 0.5; }
 
-    /* Code Blocks */
-    .code-block { position: relative; }
-    .code-block pre {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12.5px;
-      line-height: 1.6;
-      background: var(--surface-alt);
-      border: 1px solid var(--border);
-      border-radius: 0;
-      padding: 16px;
-      overflow-x: auto;
-      white-space: pre;
-      color: var(--text);
-    }
-    .copy-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      background: var(--surface);
-      box-shadow: var(--shadow);
-    }
-
     @media (max-width: 768px) {
       .metrics-grid { grid-template-columns: 1fr 1fr; }
       .form-flex { flex-direction: column; }
@@ -706,7 +684,7 @@
       <div class="form-flex" style="align-items:flex-end;margin-bottom:14px">
         <div class="field-col" style="max-width:200px">
           <label class="field-label">Usage period</label>
-          <select id="geminiPeriod" class="form-input" onchange="keyPeriodChanged('gemini')">
+          <select id="geminiPeriod" class="form-input" onchange="keyPeriodChanged()">
             <option value="today">Today</option>
             <option value="7d">Last 7 days</option>
             <option value="30d" selected>Last 30 days</option>
@@ -716,7 +694,7 @@
         </div>
         <div class="field-col" style="max-width:200px;display:none" id="geminiMonthWrap">
           <label class="field-label">Month</label>
-          <input type="month" id="geminiMonth" class="form-input" onchange="keyPeriodChanged('gemini')">
+          <input type="month" id="geminiMonth" class="form-input" onchange="keyPeriodChanged()">
         </div>
       </div>
       <div class="table-wrap">
@@ -749,7 +727,7 @@
       <div class="form-flex" style="align-items:flex-end;margin-bottom:14px">
         <div class="field-col" style="max-width:200px">
           <label class="field-label">Usage period</label>
-          <select id="clientPeriod" class="form-input" onchange="keyPeriodChanged('client')">
+          <select id="clientPeriod" class="form-input" onchange="keyPeriodChanged()">
             <option value="today">Today</option>
             <option value="7d">Last 7 days</option>
             <option value="30d" selected>Last 30 days</option>
@@ -759,7 +737,7 @@
         </div>
         <div class="field-col" style="max-width:200px;display:none" id="clientMonthWrap">
           <label class="field-label">Month</label>
-          <input type="month" id="clientMonth" class="form-input" onchange="keyPeriodChanged('client')">
+          <input type="month" id="clientMonth" class="form-input" onchange="keyPeriodChanged()">
         </div>
       </div>
       <p class="section-desc">Client keys are stored on the server so they can be copied again at any time. Anyone with dashboard access can retrieve them.</p>
@@ -909,11 +887,6 @@
       input.remove();
     }
     button.textContent = copied ? 'Copied!' : 'Copy failed';
-  }
-
-  function copyPre(button) {
-    const pre = button.parentElement.querySelector('pre');
-    copyText(pre.textContent, button);
   }
 
   function showClientKey(key) {
@@ -1080,7 +1053,6 @@
   }
 
   let logsOffset = 0;
-  let logsTotal = 0;
   const LOG_PAGE_SIZE = 50;
 
   function resultTag(l) {
@@ -1102,7 +1074,6 @@
     params.set('offset', String(logsOffset));
     try {
       const d = await api('/api/admin/logs?' + params.toString());
-      logsTotal = d.total;
       if (Array.isArray(d.models)) syncModelFilter(d.models);
       document.getElementById('logsTbody').innerHTML = d.logs.length
         ? d.logs.map(l => `<tr class="log-row" onclick="showLogDetail(${l.id})">
@@ -1275,7 +1246,7 @@
     loadUsage();
   }
 
-  function keyPeriodChanged(which) {
+  function keyPeriodChanged() {
     loadPageUsage().then(() => {
       const s = window.__lastState;
       if (s) render(s);
@@ -1307,10 +1278,10 @@
       tr.querySelector('.u-success').textContent = u.success;
       tr.querySelector('.u-pct').textContent = pct(u.success, u.total);
     });
-    buildMatrix('cmMatrixHead', 'cmMatrixBody', (pageUsage.matrix_client || []).filter(e => !String(e.label).startsWith('(deleted)')), 'model');
+    buildMatrix('cmMatrixHead', 'cmMatrixBody', (pageUsage.matrix_client || []).filter(e => !String(e.label).startsWith('(deleted)')));
   }
 
-  function buildMatrix(headId, bodyId, entries, orientation = 'model') {
+  function buildMatrix(headId, bodyId, entries) {
     const headEl = document.getElementById(headId);
     const bodyEl = document.getElementById(bodyId);
     if (!entries.length) {
@@ -1318,13 +1289,11 @@
       bodyEl.innerHTML = '<tr><td colspan="2" class="empty-notice">No requests recorded in this period.</td></tr>';
       return;
     }
-    const rowDim = orientation === 'key' ? 'label' : 'model';
-    const colDim = orientation === 'key' ? 'model' : 'label';
-    const rowLabels = [...new Set(entries.map(e => e[rowDim]))].sort();
-    const colLabels = [...new Set(entries.map(e => e[colDim]))];
+    const rowLabels = [...new Set(entries.map(e => e.model))].sort();
+    const colLabels = [...new Set(entries.map(e => e.label))];
     const lookup = {};
-    entries.forEach(e => { lookup[e[rowDim] + '||' + e[colDim]] = e.total; });
-    headEl.innerHTML = '<tr><th>' + (orientation === 'key' ? 'Key' : 'Model') + '</th>' +
+    entries.forEach(e => { lookup[e.model + '||' + e.label] = e.total; });
+    headEl.innerHTML = '<tr><th>Model</th>' +
       colLabels.map(c => `<th title="${esc(c)}">${esc(c.length > 18 ? c.slice(0, 17) + '…' : c)}</th>`).join('') + '</tr>';
     bodyEl.innerHTML = rowLabels.map(r =>
       '<tr><th title="' + esc(r) + '">' + esc(r.length > 28 ? r.slice(0, 27) + '…' : r) + '</th>' +
