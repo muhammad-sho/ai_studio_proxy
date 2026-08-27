@@ -357,7 +357,6 @@
       font-size: 14px;
     }
 
-    .empty-cell { color: var(--text-muted); font-style: italic; }
 
     /* Usage heatmap */
     .usage-table { border-collapse: collapse; width: auto; }
@@ -568,7 +567,6 @@
     .data-table td:first-child { text-align: left; font-weight: 600; }
     .data-table th { text-align: center; white-space: nowrap; }
     .data-table td { text-align: center; vertical-align: middle; }
-    .data-table .empty-cell { opacity: 0.5; }
 
     @media (max-width: 768px) {
       .metrics-grid { grid-template-columns: 1fr 1fr; }
