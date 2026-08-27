@@ -51,6 +51,7 @@ jobs:
             -v "$PWD/ci-data:/data" \
             ai-studio-proxy:ci
           cleanup() {
+            docker inspect ai-studio-proxy-ci || true
             docker logs ai-studio-proxy-ci || true
             docker rm -f ai-studio-proxy-ci || true
           }
