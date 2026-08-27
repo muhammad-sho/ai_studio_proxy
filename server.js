@@ -1083,27 +1083,36 @@ async function handleRequest(request, response) {
     } else {
       scope = "all time";
     }
-    const clients = prep(`SELECT u.client_key_id AS id, COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
-        COUNT(*) AS total, SUM(u.ok) AS success, COUNT(*) - SUM(u.ok) AS failed
-      FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
-      WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id ORDER BY total DESC`).all(start, end);
-    const keys = prep(`SELECT u.gemini_key_id AS id, COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
-        COUNT(*) AS total, SUM(u.ok) AS success, COUNT(*) - SUM(u.ok) AS failed
-      FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
-      WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id ORDER BY total DESC`).all(start, end);
-    const models = prep(`SELECT model, COUNT(*) AS total, SUM(ok) AS success, COUNT(*) - SUM(ok) AS failed
-      FROM usage WHERE created_at >= ? AND created_at < ? GROUP BY model ORDER BY total DESC`).all(start, end);
-    const matrix_client = prep(`SELECT COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
-        u.model AS model, COUNT(*) AS total
-      FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
-      WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id, u.model ORDER BY total DESC`).all(start, end);
-    const matrix_gemini = prep(`SELECT COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
-        u.model AS model, COUNT(*) AS total
-      FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
-      WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id, u.model ORDER BY total DESC`).all(start, end);
-    const failures_model = prep(`SELECT model, IFNULL(error_code, 'unknown') AS code, COUNT(*) AS n
-      FROM usage WHERE ok = 0 AND created_at >= ? AND created_at < ? GROUP BY model, error_code ORDER BY n DESC`).all(start, end);
-    return json(response, 200, { period: scope, clients, keys, models, matrix_client, matrix_gemini, failures_model });
+    const view = new Set(["all", "clients", "gemini", "statistics"]).has(url.searchParams.get("view"))
+      ? url.searchParams.get("view") : "all";
+    const payload = { period: scope };
+    if (view === "all" || view === "clients") {
+      payload.clients = prep(`SELECT u.client_key_id AS id, COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
+          COUNT(*) AS total, SUM(u.ok) AS success, COUNT(*) - SUM(u.ok) AS failed
+        FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
+        WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id ORDER BY total DESC`).all(start, end);
+      payload.matrix_client = prep(`SELECT COALESCE(k.label, '(deleted #' || u.client_key_id || ')') AS label,
+          u.model AS model, COUNT(*) AS total
+        FROM usage u LEFT JOIN client_keys k ON k.id = u.client_key_id
+        WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.client_key_id, u.model ORDER BY total DESC`).all(start, end);
+    }
+    if (view === "all" || view === "gemini") {
+      payload.keys = prep(`SELECT u.gemini_key_id AS id, COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
+          COUNT(*) AS total, SUM(u.ok) AS success, COUNT(*) - SUM(u.ok) AS failed
+        FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
+        WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id ORDER BY total DESC`).all(start, end);
+      payload.matrix_gemini = prep(`SELECT COALESCE(k.label, '(deleted #' || u.gemini_key_id || ')') AS label,
+          u.model AS model, COUNT(*) AS total
+        FROM usage u LEFT JOIN api_keys k ON k.id = u.gemini_key_id
+        WHERE u.created_at >= ? AND u.created_at < ? GROUP BY u.gemini_key_id, u.model ORDER BY total DESC`).all(start, end);
+    }
+    if (view === "all" || view === "statistics") {
+      payload.models = prep(`SELECT model, COUNT(*) AS total, SUM(ok) AS success, COUNT(*) - SUM(ok) AS failed
+        FROM usage WHERE created_at >= ? AND created_at < ? GROUP BY model ORDER BY total DESC`).all(start, end);
+      payload.failures_model = prep(`SELECT model, IFNULL(error_code, 'unknown') AS code, COUNT(*) AS n
+        FROM usage WHERE ok = 0 AND created_at >= ? AND created_at < ? GROUP BY model, error_code ORDER BY n DESC`).all(start, end);
+    }
+    return json(response, 200, payload);
   }
 
   if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
