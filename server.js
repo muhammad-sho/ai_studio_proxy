@@ -40,7 +40,8 @@ const { staticPage, sendDashboard, serveDashboardAsset } = createDashboardAssets
 const {
   hashValue, dashboardSessionValid, csrfValid, resolveClientKey, localKeyIsValid, clientAddress,
   rateLimited, recordLoginFailure, clearLoginFailures, hasAdmin, passwordDigest, passwordValid,
-  createSession, destroySession, pruneExpiredSessions,
+  createPasswordResetCode, passwordResetCodeActive, storePasswordResetCode, passwordResetCodeValid,
+  consumePasswordResetCode, createSession, destroySession, destroyAllSessions, pruneExpiredSessions,
 } = createAuth({
   prep, crypto, trustProxy: TRUST_PROXY, sessionTtlMs: SESSION_TTL_MS,
   cookieSession: COOKIE_SESSION, cookieCsrf: COOKIE_CSRF, log, isOpenAiCompatibilityRoute,
@@ -62,7 +63,9 @@ const { handleRequest } = createRequestHandler({
   crypto, db, prep, log, dbg, maskKey, json, securityHeaders, readBody, MAX_BODY_BYTES, SESSION_TTL_MS,
   parseApiRoute, parseUploadRoute,
   dashboardSessionValid, csrfValid, localKeyIsValid, clientAddress, rateLimited,
-  passwordDigest, passwordValid, recordLoginFailure, clearLoginFailures, hasAdmin, createSession, destroySession,
+  passwordDigest, passwordValid, createPasswordResetCode, passwordResetCodeActive, storePasswordResetCode,
+  passwordResetCodeValid, consumePasswordResetCode, recordLoginFailure, clearLoginFailures,
+  hasAdmin, createSession, destroySession, destroyAllSessions,
   COOKIE_SESSION, COOKIE_CSRF, hashValue, invalidateSecretMaskCache,
   staticPage, sendDashboard, serveDashboardAsset,
   handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticModelsRequest,

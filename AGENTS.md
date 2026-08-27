@@ -28,7 +28,7 @@ Functional testing = boot on a scratch port with a temp DB and drive the API:
 ```bash
 PORT=18970 DB_PATH=/tmp/x/db timeout 10 node server.js &
 # must run from the project directory (see gotchas)
-curl -X POST localhost:18970/api/setup -H 'Content-Type: application/json' -d '{"username":"admin","password":"testpass123"}'
+curl -X POST localhost:18970/api/setup -H 'Content-Type: application/json' -d '{"username":"admin","password":"testpass123","passwordConfirmation":"testpass123"}'
 ```
 
 Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token from the cookie jar (`awk '$6=="ai_studio_proxy_csrf" {print $7}' "$J"`) and send `-H "x-csrf-token: $CSRF"`. GETs need only the session cookie.

@@ -15,6 +15,8 @@ let dbDir;
 let child;
 let adminCookie;
 let csrfToken;
+let recoveryCode;
+let serviceLog = "";
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -46,6 +48,15 @@ function request(port, pathName, options = {}) {
   });
 }
 
+async function waitForLog(pattern, from = 0) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const match = pattern.exec(serviceLog.slice(from));
+    if (match) return match;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("expected service log entry was not emitted");
+}
+
 async function waitForHealth(port) {
   let lastError;
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -66,8 +77,10 @@ before(async () => {
   child = spawn(process.execPath, ["server.js"], {
     cwd: root,
     env: { ...process.env, ADMIN_PORT: String(adminPort), API_PORT: String(apiPort), DB_PATH: path.join(dbDir, "test.db") },
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  child.stdout.on("data", (chunk) => { serviceLog += chunk.toString(); });
+  child.stderr.on("data", (chunk) => { serviceLog += chunk.toString(); });
   await Promise.all([waitForHealth(adminPort), waitForHealth(apiPort)]);
 });
 
@@ -88,19 +101,29 @@ test("keeps the admin and API port route families separate", async () => {
 });
 
 test("requires authentication for dashboard assets and admin APIs", async () => {
-  const [asset, state] = await Promise.all([
+  const [asset, state, signin] = await Promise.all([
     request(adminPort, "/dashboard.js"),
     request(adminPort, "/api/admin/state"),
+    request(adminPort, "/"),
   ]);
   assert.equal(asset.status, 401);
   assert.equal(state.status, 401);
+  assert.match(signin.body, /Forgot password/);
 });
 
 test("sets up an administrator and serves authenticated dashboard assets", async () => {
+  const mismatch = await request(adminPort, "/api/setup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "admin", password: "testpass123", passwordConfirmation: "different-password" }),
+  });
+  assert.equal(mismatch.status, 400);
+  assert.match(mismatch.body, /confirmation/);
+
   const setup = await request(adminPort, "/api/setup", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: "admin", password: "testpass123" }),
+    body: JSON.stringify({ username: "admin", password: "testpass123", passwordConfirmation: "testpass123" }),
   });
   assert.equal(setup.status, 201);
 
@@ -208,4 +231,66 @@ test("keeps the manual model refresh route available", async () => {
   });
   assert.equal(refresh.status, 502);
   assert.equal(JSON.parse(refresh.body).status, 503);
+});
+
+
+test("resets the administrator password with a locally logged code", async () => {
+  const resetPage = await request(adminPort, "/reset-password");
+  assert.equal(resetPage.status, 200);
+  assert.match(resetPage.body, /Recovery Code/);
+
+  const beforeCodeLog = serviceLog.length;
+  const codeRequest = await request(adminPort, "/api/password-reset-code", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "admin" }),
+  });
+  assert.equal(codeRequest.status, 202);
+  recoveryCode = (await waitForLog(/Password reset code for 'admin': ([A-Za-z0-9_-]+)/, beforeCodeLog))[1];
+  assert.match(recoveryCode, /^[A-Za-z0-9_-]{32}$/);
+
+  const repeatedRequest = await request(adminPort, "/api/password-reset-code", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "admin" }),
+  });
+  assert.equal(repeatedRequest.status, 202);
+
+  const mismatch = await request(adminPort, "/api/reset-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "admin", recoveryCode, password: "replacement123", passwordConfirmation: "different-password" }),
+  });
+  assert.equal(mismatch.status, 400);
+
+  const rejected = await request(adminPort, "/api/reset-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "admin", recoveryCode: "wrong-code", password: "replacement123", passwordConfirmation: "replacement123" }),
+  });
+  assert.equal(rejected.status, 401);
+
+  const reset = await request(adminPort, "/api/reset-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "admin", recoveryCode, password: "replacement123", passwordConfirmation: "replacement123" }),
+  });
+  assert.equal(reset.status, 200);
+
+  const staleSession = await request(adminPort, "/api/admin/state", { headers: { cookie: adminCookie } });
+  assert.equal(staleSession.status, 401);
+
+  const oldLogin = await request(adminPort, "/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "username=admin&password=testpass123",
+  });
+  assert.equal(oldLogin.status, 401);
+
+  const newLogin = await request(adminPort, "/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "username=admin&password=replacement123",
+  });
+  assert.equal(newLogin.status, 302);
 });

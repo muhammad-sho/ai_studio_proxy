@@ -48,6 +48,8 @@ http://YOUR_SERVER_IP:9009
 
 The dashboard uses port 9009 and the Gemini-compatible proxy API uses port 9008.
 
+If you forget the dashboard password, open the reset link on the sign-in page. Requesting a reset writes a one-time, 15-minute recovery code to the local service logs; enter that code to set a confirmed new password without email or another external service.
+
 Add your Gemini API keys and create a client key.
 
 That's it.
