@@ -16,7 +16,7 @@ const { createRequestHandler } = require("./lib/admin-routes");
 
 const {
   ADMIN_PORT, API_PORT, DB_PATH, REQUEST_TIMEOUT_MS, MAX_BODY_BYTES, MAX_RESPONSE_BYTES,
-  TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, USAGE_RETENTION_DAYS, MODELS_CACHE_TTL_MS,
+  TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, USAGE_RETENTION_DAYS,
   SESSION_TTL_MS, TRUST_PROXY, DEBUG, CORS_ORIGIN,
 } = loadConfig();
 const COOKIE_SESSION = "ai_studio_proxy_dashboard";
@@ -54,8 +54,8 @@ const {
 } = createUsage({ db, prep, log, maskKey, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, USAGE_RETENTION_DAYS });
 const { handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticModelsRequest } = createGeminiProxy({
   https, crypto, db, prep, log, dbg, maskKey, json, readBody, requestPath, statsModelName,
-  REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, MODELS_CACHE_TTL_MS, LOG_BODY_MAX_BYTES,
-  poolKeys, setMeta, getMeta, pacificDayStart, resolveClientKey, clientAddress,
+  REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES,
+  poolKeys, pacificDayStart, resolveClientKey, clientAddress,
   maskSecrets, clipBody, upstreamErrorPayload, errorCodeFromPayload, recordLog,
   recordUsageRow, setCooldown, setCooldownUntil, nextPacificReset, isOpenAiCompatibilityRoute, classifyRoute,
 });
