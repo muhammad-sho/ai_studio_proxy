@@ -1070,6 +1070,32 @@ async function handleRequest(request, response) {
     return json(response, 201, { ok: true, clientApiKey });
   }
   const clientKeyMatch = url.pathname.match(/^\/api\/admin\/client-keys\/(\d+)$/);
+  if (clientKeyMatch && request.method === "PATCH") {
+    const keyId = Number(clientKeyMatch[1]);
+    let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
+    const existing = db.prepare("SELECT * FROM client_keys WHERE id=?").get(keyId);
+    if (!existing) return json(response, 404, { error: "Client key not found" });
+    let newKey = null;
+    const regenKey = body.key !== undefined && String(body.key).trim() !== "";
+    if (regenKey) {
+      newKey = crypto.randomBytes(32).toString("base64url");
+      db.prepare("UPDATE client_keys SET key_hash=?, key_prefix=?, key_text=? WHERE id=?")
+        .run(hashValue(newKey), `${newKey.slice(0, 8)}...`, newKey, keyId);
+    }
+    if (body.label !== undefined) {
+      const label = String(body.label).trim();
+      if (!label) return json(response, 400, { error: "Label cannot be empty" });
+      db.prepare("UPDATE client_keys SET label=? WHERE id=?").run(label, keyId);
+    }
+    invalidateSecretMaskCache();
+    log("info", "Admin", `client key #${keyId}${regenKey ? " regenerated" : " updated"}${body.label !== undefined ? ` (label '${String(body.label).trim()}')` : ""}`);
+    return json(response, 200, { ok: true, clientApiKey: newKey });
+  }
+  if (clientKeyMatch && request.method === "GET") {
+    const row = db.prepare("SELECT label, key_text FROM client_keys WHERE id=?").get(Number(clientKeyMatch[1]));
+    if (!row) return json(response, 404, { error: "Client key not found" });
+    return json(response, 200, { ok: true, label: row.label, key: row.key_text || null });
+  }
   if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); invalidateSecretMaskCache(); log("info", "Admin", `client key #${clientKeyMatch[1]} deleted`); return json(response, 200, { ok: true }); }
   if (url.pathname === "/api/admin/keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
@@ -1102,6 +1128,25 @@ async function handleRequest(request, response) {
     return json(response, 201, { ok: true });
   }
   const keyMatch = url.pathname.match(/^\/api\/admin\/keys\/(\d+)$/);
+  if (keyMatch && request.method === "PATCH") {
+    const keyId = Number(keyMatch[1]);
+    let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
+    const existing = db.prepare("SELECT * FROM api_keys WHERE id=?").get(keyId);
+    if (!existing) return json(response, 404, { error: "Gemini key not found" });
+    const newValue = String(body.key || "").trim();
+    if (newValue) {
+      if (db.prepare("SELECT id FROM api_keys WHERE api_key = ? AND id != ?").get(newValue, keyId)) return json(response, 409, { error: "This API key is already configured" });
+      db.prepare("UPDATE api_keys SET api_key=? WHERE id=?").run(newValue, keyId);
+    }
+    if (body.label !== undefined) {
+      const label = String(body.label).trim();
+      if (!label) return json(response, 400, { error: "Label cannot be empty" });
+      db.prepare("UPDATE api_keys SET label=? WHERE id=?").run(label, keyId);
+    }
+    invalidateSecretMaskCache();
+    log("info", "Admin", `Gemini key #${keyId} updated${newValue ? ` (new key ${maskKey(newValue)})` : ""}${body.label !== undefined ? ` (label '${String(body.label).trim()}')` : ""}`);
+    return json(response, 200, { ok: true });
+  }
   if (keyMatch && request.method === "DELETE") {
     const keyId = Number(keyMatch[1]);
     const deleted = db.prepare("SELECT label FROM api_keys WHERE id=?").get(keyId);

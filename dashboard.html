@@ -318,12 +318,15 @@
       background: var(--surface-alt);
     }
     .data-table td {
-      padding: 14px;
+      padding: 10px 14px;
       border-bottom: 1px solid var(--border);
       vertical-align: middle;
     }
     .data-table tr:last-child td { border-bottom: none; }
     .data-table tr:hover td:first-child { box-shadow: inset 3px 0 0 0 var(--border-strong); }
+    .key-row { cursor: pointer; }
+    .key-row:hover td { background: var(--surface-alt); }
+    .key-row td { padding: 8px 14px; }
 
     /* Badges */
     .status-tag {
@@ -700,7 +703,7 @@
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Label</th><th>Key Prefix</th><th>Requests</th><th>Success</th><th>Success %</th><th>Actions</th></tr>
+            <tr><th>Label</th><th>Key Prefix</th><th>Requests</th><th>Success</th><th>Success %</th></tr>
           </thead>
           <tbody id="keysTbody"></tbody>
         </table>
@@ -744,7 +747,7 @@
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Label</th><th>Key Prefix</th><th>Requests</th><th>Success</th><th>Success %</th><th>Actions</th></tr>
+            <tr><th>Label</th><th>Key Prefix</th><th>Requests</th><th>Success</th><th>Success %</th></tr>
           </thead>
           <tbody id="clientKeysTbody"></tbody>
         </table>
@@ -933,35 +936,29 @@
     document.getElementById('clientKeysTbody').innerHTML = ck.length
       ? ck.map(k => {
           const u = usageFor((pageUsage || {}).clients, k.id);
-          return `<tr data-key-id="${k.id}">
+          return `<tr class="key-row" data-key-type="client" data-key-id="${k.id}" title="Click for actions">
           <td><strong>${esc(k.label)}</strong></td>
           <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
           <td class="u-total">${u.total}</td>
           <td class="u-success">${u.success}</td>
           <td class="u-pct">${pct(u.success, u.total)}</td>
-          <td>
-            <button class="btn-tbl btn-tbl-danger" onclick="deleteClientKey(${k.id})">Delete</button>
-          </td>
         </tr>`;
         }).join('')
-      : '<tr><td colspan="6" class="empty-notice">No client keys configured.</td></tr>';
+      : '<tr><td colspan="5" class="empty-notice">No client keys configured.</td></tr>';
 
     const gk = data.keys || [];
     document.getElementById('keysTbody').innerHTML = gk.length
       ? gk.map(k => {
           const u = usageFor((pageUsage || {}).keys, k.id);
-          return `<tr data-key-id="${k.id}">
+          return `<tr class="key-row" data-key-type="gemini" data-key-id="${k.id}" title="Click for actions">
           <td><strong>${esc(k.label)}</strong></td>
           <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
           <td class="u-total">${u.total}</td>
           <td class="u-success">${u.success}</td>
           <td class="u-pct">${pct(u.success, u.total)}</td>
-          <td>
-            <button class="btn-tbl btn-tbl-danger" onclick="deleteKey(${k.id})">Delete</button>
-          </td>
         </tr>`;
         }).join('')
-      : '<tr><td colspan="6" class="empty-notice">No Gemini API keys configured.</td></tr>';
+      : '<tr><td colspan="5" class="empty-notice">No Gemini API keys configured.</td></tr>';
 
     const us = data.usage || [];
 
@@ -1378,16 +1375,80 @@
     } catch (err) { alert(err.message); resultDiv.style.display = 'none'; }
   };
 
-  async function deleteClientKey(id) {
-    if (!confirm('Delete this client key?')) return;
-    try { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); }
-    catch (err) { alert(err.message); }
+  async function doDeleteKey(type, id) {
+    if (!confirm(type === 'client' ? 'Delete this client key?' : 'Delete this Gemini API key?')) return;
+    try {
+      await api('/api/admin/' + (type === 'client' ? 'client-keys' : 'keys') + '/' + id, { method: 'DELETE' });
+      closeKeyModal();
+      load();
+    } catch (err) { alert(err.message); }
   }
-  async function deleteKey(id) {
-    if (!confirm('Delete this Gemini API key?')) return;
-    try { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); }
-    catch (err) { alert(err.message); }
+
+  function openKeyModal(type, id, label, masked) {
+    const isClient = type === 'client';
+    document.getElementById('keyModalTitle').textContent = (isClient ? 'Client Key' : 'Gemini Key') + ' — ' + label;
+    document.getElementById('keyModalBody').innerHTML = `
+      <div class="log-summary" style="grid-template-columns:auto 1fr">
+        <dt>Label</dt><dd><strong>${esc(label)}</strong></dd>
+        <dt>Key</dt><dd><code style="font-family:'JetBrains Mono',monospace">${esc(masked)}</code></dd>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button type="button" class="btn-tbl" onclick="openEditKey(${isClient}, ${id})">Edit</button>
+        ${isClient ? `<button type="button" class="btn-tbl" onclick="copyClientKey(${id}, this)">Copy Key</button>` : ''}
+        <button type="button" class="btn-tbl btn-tbl-danger" onclick="doDeleteKey('${type}', ${id})">Delete</button>
+      </div>`;
+    document.getElementById('keyModal').style.display = 'flex';
   }
+
+  function openEditKey(isClient, id) {
+    const currentLabel = document.getElementById('keyModalTitle').textContent.replace(/^(Client Key|Gemini Key) — /, '');
+    document.getElementById('keyModalBody').innerHTML = `
+      <label class="field-label">Label</label>
+      <input type="text" id="editKeyLabel" class="form-input" value="${esc(currentLabel)}" style="width:100%;margin-bottom:12px">
+      <label class="field-label">${isClient ? 'Regenerate key (leave blank to keep)' : 'Key (leave blank to keep)'}</label>
+      ${isClient
+        ? `<input type="text" id="editKeyValue" class="form-input" placeholder="Generates a new random key" style="width:100%;margin-bottom:12px">`
+        : `<input type="text" id="editKeyValue" class="form-input" placeholder="Paste a new Gemini API key" style="width:100%;margin-bottom:12px">`}
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button type="button" class="btn-tbl" onclick="saveEditKey(${isClient}, ${id})">Save</button>
+        <button type="button" class="btn-tbl" onclick="openKeyModal(${isClient ? "'client'" : "'gemini'"}, ${id}, '${esc(currentLabel)}', '')">Cancel</button>
+      </div>`;
+    document.getElementById('keyModalTitle').textContent = isClient ? 'Edit Client Key' : 'Edit Gemini Key';
+  }
+
+  async function saveEditKey(isClient, id) {
+    const label = document.getElementById('editKeyLabel').value.trim();
+    const keyVal = document.getElementById('editKeyValue').value.trim();
+    if (!label) { alert('Label cannot be empty'); return; }
+    try {
+      const body = { label };
+      if (keyVal) body.key = keyVal;
+      const res = await api('/api/admin/' + (isClient ? 'client-keys' : 'keys') + '/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+      closeKeyModal();
+      if (isClient && res.clientApiKey) showClientKey(res.clientApiKey);
+      load();
+    } catch (err) { alert(err.message); }
+  }
+
+  async function copyClientKey(id, button) {
+    try {
+      const res = await api('/api/admin/client-keys/' + id);
+      if (res.key) { copyText(res.key, button); return; }
+      alert('No key available to copy');
+    } catch (err) { alert(err.message); }
+  }
+
+  function closeKeyModal() { document.getElementById('keyModal').style.display = 'none'; }
+
+  document.addEventListener('click', (e) => {
+    const row = e.target.closest('.key-row');
+    if (!row) return;
+    const id = Number(row.dataset.keyId);
+    const type = row.dataset.keyType;
+    const label = row.querySelector('td strong')?.textContent || '';
+    const masked = row.querySelector('td code')?.textContent || '';
+    openKeyModal(type, id, label, masked);
+  });
   async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
 
   initActiveTab();
@@ -1410,6 +1471,18 @@
         </span>
       </div>
       <div class="modal-body" id="logModalBody"></div>
+    </div>
+  </div>
+
+  <div id="keyModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeKeyModal()">
+    <div class="modal-card" style="max-width:520px">
+      <div class="modal-head">
+        <strong id="keyModalTitle">Key</strong>
+        <button type="button" class="modal-x" onclick="closeKeyModal()" title="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="keyModalBody"></div>
+      </div>
     </div>
   </div>
 </body>
