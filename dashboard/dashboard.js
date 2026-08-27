@@ -186,7 +186,7 @@
     tip._t = setTimeout(() => { tip.style.display = 'none'; }, 1800);
   }
 
-  (function usageColumnFocus() {
+  function initUsageColumnFocus() {
     const table = document.querySelector('.usage-table');
     if (!table) return;
     const clear = () => table.querySelectorAll('td.xfocus').forEach(n => n.classList.remove('xfocus'));
@@ -197,7 +197,7 @@
       for (const row of table.tBodies[0].rows) row.cells[cell.cellIndex]?.classList.add('xfocus');
     });
     table.addEventListener('mouseleave', clear);
-  })();
+  }
 
   async function clearCooldowns() {
     try {
@@ -387,7 +387,11 @@
   let pageUsage = null;
   async function loadPageUsage() {
     try {
-      pageUsage = await api('/api/admin/usage' + usageQuery('geminiPeriod', 'geminiMonth'));
+      const [geminiUsage, clientUsage] = await Promise.all([
+        api('/api/admin/usage' + usageQuery('geminiPeriod', 'geminiMonth')),
+        api('/api/admin/usage' + usageQuery('clientPeriod', 'clientMonth'))
+      ]);
+      pageUsage = { ...geminiUsage, clients: clientUsage.clients, matrix_client: clientUsage.matrix_client };
       renderPageUsage();
     } catch (e) { console.error(e); }
   }
@@ -586,6 +590,7 @@
 
   (async () => {
     await injectPanels();
+    initUsageColumnFocus();
   document.getElementById('clientKeyForm').onsubmit = async (event) => {
     event.preventDefault();
     try {
