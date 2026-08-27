@@ -3,6 +3,7 @@ const { once } = require("node:events");
 const { EventEmitter } = require("node:events");
 const { test } = require("node:test");
 const { createGeminiProxy } = require("../lib/gemini-proxy");
+const { isOpenAiCompatibilityRoute } = require("../lib/routing");
 
 function fakeHttps(status, headers, body, observed) {
   return {
@@ -163,4 +164,21 @@ test("forwards model discovery directly without reading or writing a response ca
   assert.equal(response.body.toString(), '{"models":[{"name":"models/gemini-live"}]}');
   assert.equal(cacheReads, 0);
   assert.equal(cacheWrites, 0);
+});
+
+
+test("maps standard OpenAI chat paths to Gemini's compatibility upstream", async () => {
+  const observed = {};
+  const proxy = proxyFor(200, { "content-type": "application/json", "content-length": "11" }, '{"ok":true}', observed);
+  const result = await proxy.forwardToGemini(
+    { url: "/v1/chat/completions", method: "POST", headers: { authorization: "Bearer proxy-client-key" } },
+    Buffer.from("{}"),
+    "gemini-key",
+    { stream: true },
+  );
+
+  assert.equal(result.stream, true);
+  assert.equal(observed.options.path, "/v1beta/openai/chat/completions");
+  assert.equal(observed.options.headers.authorization, "Bearer gemini-key");
+  assert.equal(observed.options.headers["x-goog-api-key"], undefined);
 });
