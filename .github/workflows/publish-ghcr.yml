@@ -41,6 +41,7 @@ jobs:
       - name: Verify container startup
         run: |
           mkdir -p ci-data
+          touch ci-data/local-gemini-proxy.db
           docker run -d --rm --name ai-studio-proxy-ci \
             -p 19009:9009 -p 19008:9008 \
             -v "$PWD/ci-data:/data" \
@@ -52,6 +53,8 @@ jobs:
           trap cleanup EXIT
           curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 http://127.0.0.1:19009/health
           curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 http://127.0.0.1:19008/health
+          test -f ci-data/ai-studio-proxy.db
+          test ! -e ci-data/local-gemini-proxy.db
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
