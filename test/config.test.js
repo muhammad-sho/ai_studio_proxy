@@ -12,6 +12,7 @@ test("uses safe defaults when numeric environment values are invalid", () => {
     LOG_BODY_MAX_BYTES: "0",
     MAX_LOG_ENTRIES: "49",
     MODELS_CACHE_TTL_HOURS: "0",
+    USAGE_RETENTION_DAYS: "-1",
   });
 
   assert.equal(config.ADMIN_PORT, 9009);
@@ -22,6 +23,7 @@ test("uses safe defaults when numeric environment values are invalid", () => {
   assert.equal(config.LOG_BODY_MAX_BYTES, 64 * 1024);
   assert.equal(config.MAX_LOG_ENTRIES, 50);
   assert.equal(config.MODELS_CACHE_TTL_MS, 24 * 60 * 60 * 1000);
+  assert.equal(config.USAGE_RETENTION_DAYS, 0);
 });
 
 test("keeps valid numeric environment overrides", () => {
@@ -44,4 +46,10 @@ test("keeps valid numeric environment overrides", () => {
   assert.equal(config.LOG_BODY_MAX_BYTES, 4_096);
   assert.equal(config.MAX_LOG_ENTRIES, 250);
   assert.equal(config.MODELS_CACHE_TTL_MS, 12 * 60 * 60 * 1000);
+});
+
+
+test("accepts an explicit usage retention window", () => {
+  assert.equal(loadConfig({ USAGE_RETENTION_DAYS: "30" }).USAGE_RETENTION_DAYS, 30);
+  assert.equal(loadConfig({ USAGE_RETENTION_DAYS: "36501" }).USAGE_RETENTION_DAYS, 0);
 });
