@@ -1,0 +1,29 @@
+    <div class="section-box">
+      <h2 class="section-title">Statistics</h2>
+      <p class="section-desc">Requests, success rates and failure reasons per model for the selected period. Per-key breakdowns are shown on the Gemini Keys and Client Keys pages.</p>
+      <div class="form-flex" style="align-items:flex-end;margin-bottom:14px">
+        <div class="field-col" style="max-width:200px">
+          <label class="field-label">Period</label>
+          <select id="statsPeriod" class="form-input" onchange="statsPeriodChanged()">
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d" selected>Last 30 days</option>
+            <option value="month">Specific month</option>
+            <option value="all">All time</option>
+          </select>
+        </div>
+        <div class="field-col" style="max-width:200px;display:none" id="statsMonthWrap">
+          <label class="field-label">Month</label>
+          <input type="month" id="statsMonth" class="form-input" onchange="loadUsage()">
+        </div>
+        <button type="button" class="btn-primary" onclick="loadUsage()">Refresh</button>
+        <span id="usageMeta" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Model</th><th>Requests</th><th>Success</th><th>Failed</th><th>Failures by Reason</th></tr></thead>
+          <tbody id="usageModelsTbody"><tr><td colspan="5" class="empty-notice">No requests recorded in this period.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  

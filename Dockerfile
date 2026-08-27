@@ -4,7 +4,7 @@ WORKDIR /app
 RUN apk add --no-cache su-exec \
     && mkdir -p /data
 COPY server.js ./server.js
-COPY dashboard.html ./dashboard.html
+COPY dashboard/ ./dashboard/
 COPY setup.html ./setup.html
 COPY signin.html ./signin.html
 COPY --chmod=755 entrypoint.sh ./entrypoint.sh

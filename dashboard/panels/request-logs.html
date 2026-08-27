@@ -1,0 +1,29 @@
+<div class="section-box">
+      <h2 class="section-title">Request Logs</h2>
+      <p class="section-desc">Every generateContent request with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <select id="logModel" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All models</option></select>
+        <select id="logResult" class="form-input" style="width:auto" onchange="loadLogs()">
+          <option value="">All results</option>
+          <option value="success">Success</option>
+          <option value="failed">Failed</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <input id="logSearch" class="form-input" style="flex:1;min-width:160px" placeholder="Search model, key label, status code..." oninput="clearTimeout(window.__logTimer);window.__logTimer=setTimeout(loadLogs,300)">
+        <button type="button" class="btn-primary" onclick="loadLogs()">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Time</th><th>Model</th><th>Key</th><th>Attempt</th><th>Result</th></tr></thead>
+          <tbody id="logsTbody"><tr><td colspan="5" class="empty-notice">No log entries yet.</td></tr></tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text-muted)">
+        <span id="logMeta"></span>
+        <span style="display:flex;gap:8px">
+          <button type="button" class="btn-tbl" id="logsNewerBtn" onclick="logsPage(-1)" style="display:none">&larr; Newer</button>
+          <button type="button" class="btn-tbl" id="logsOlderBtn" onclick="logsPage(1)" style="display:none">Older &rarr;</button>
+        </span>
+      </div>
+    </div>
+  

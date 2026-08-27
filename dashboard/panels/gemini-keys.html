@@ -1,0 +1,44 @@
+    <div class="section-box">
+      <h2 class="section-title">Add Gemini API Key</h2>
+      <p class="section-desc">Add API keys from your Google AI Studio accounts. Requests are distributed across all configured keys. Paste one key per line or separate with commas.</p>
+      <form id="keyForm" class="form-flex">
+        <div class="field-col">
+          <label class="field-label">Label <span style="color:var(--text-muted);font-weight:400">(optional, single key only)</span></label>
+          <input type="text" name="label" class="form-input" placeholder="e.g. google-account-01">
+        </div>
+        <div class="field-col" style="flex:2">
+          <label class="field-label">Gemini API Key(s)</label>
+          <textarea name="key" class="form-input" rows="3" placeholder="AIzaSy...&#10;AIzaSy...&#10;AIzaSy..." required style="resize:vertical;font-family:monospace;font-size:13px"></textarea>
+        </div>
+        <button type="submit" class="btn-primary">Add Key(s)</button>
+      </form>
+      <div id="keyImportResult" style="display:none;margin-top:12px;padding:10px 14px;border-radius:0;background:var(--bg);font-size:13px;line-height:1.6"></div>
+    </div>
+    <div class="section-box">
+      <h2 class="section-title">Configured Gemini Keys</h2>
+      <div class="form-flex" style="align-items:flex-end;margin-bottom:14px">
+        <div class="field-col" style="max-width:200px">
+          <label class="field-label">Usage period</label>
+          <select id="geminiPeriod" class="form-input" onchange="keyPeriodChanged()">
+            <option value="today">Today</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d" selected>Last 30 days</option>
+            <option value="month">Specific month</option>
+            <option value="all">All time</option>
+          </select>
+        </div>
+        <div class="field-col" style="max-width:200px;display:none" id="geminiMonthWrap">
+          <label class="field-label">Month</label>
+          <input type="month" id="geminiMonth" class="form-input" onchange="keyPeriodChanged()">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Label</th><th>Key Prefix</th><th>Requests</th><th>Success</th><th>Success %</th></tr>
+          </thead>
+          <tbody id="keysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  

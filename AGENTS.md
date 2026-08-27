@@ -3,7 +3,7 @@
 ## Stack
 
 - Zero-dependency Node.js (22+): `server.js` (~1000 lines) is the entire backend — HTTP server, SQLite via built-in `node:sqlite`, upstream forwarding, and the dashboard/setup/sign-in UI.
-- `dashboard.html` is the entire main UI (CSS + JS + markup in one file); `setup.html` and `signin.html` are the two minimal auth pages, lazily read from disk only when first requested (`staticPage()`). No build step.
+- The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` fetches `/panels/<name>.html` partials (one per tab) and injects them. All assets are lazy-read from disk and cached on first request (`loadDashboardAsset()`), served only on the admin port. `setup.html` and `signin.html` are the two minimal auth pages, also lazy-read (`staticPage()`).
 - No `package.json`, no test framework, no linter. Don't add dependencies or tooling without being asked.
 
 ## Verification (no test suite exists)
@@ -26,7 +26,7 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 
 ## Gotchas
 
-- **cwd matters**: `server.js` reads `dashboard.html` relative to the working directory. Running `node server.js` from anywhere else crashes at boot. Docker sets WORKDIR /app, so only affects local runs.
+- **cwd matters**: `server.js` reads `dashboard/`, `setup.html`, and `signin.html` relative to the working directory. Running `node server.js` from anywhere else crashes at boot. Docker sets WORKDIR /app, so only affects local runs.
 - To simulate upstream failures, append `127.0.0.1 generativelanguage.googleapis.com` to `/etc/hosts`, and remove it afterwards (verify with `rg googleapis /etc/hosts`). Node's keep-alive agent reuses sockets, so DNS tricks don't affect requests already warmed in the same process — restart the server after changing hosts. Permanent-looking 400s from "Google" during such tests mean the blackhole didn't apply.
 - Invalid Gemini API keys get a real Google `400 INVALID_ARGUMENT` (classified permanent, returned as-is). 429/5xx/transport errors trigger cooldowns; there is no retry — every request is attempted once.
 - `.gitignore` covers `*.db*` — never commit databases; use `/tmp` for test DBs.
@@ -55,7 +55,7 @@ The app is past initial testing and running for real users. Every change must be
 
 ## Naming & docs conventions
 
-- Known accepted trade-offs (former audit findings, deliberately not fixed): CSP allows `'unsafe-inline'` scripts (dashboard is one static file); usage attribution is per Gemini key only, not per client key; `POST /v1beta/models` is accepted alongside GET (legacy compatibility); `dashboard.html` is read once at boot, so UI edits need a restart. Don't "fix" these silently — they're owner-approved.
+- Known accepted trade-offs (former audit findings, deliberately not fixed): CSP allows `'unsafe-inline'` scripts (dashboard panels are injected with inline handlers); usage attribution is per Gemini key only, not per client key; `POST /v1beta/models` is accepted alongside GET (legacy compatibility); `dashboard/` assets are read and cached on first request, so UI edits need a restart. Don't "fix" these silently — they're owner-approved.
 - Repo is `ai_studio_proxy` (underscores); Docker image/service/container are `ai-studio-proxy` (hyphens); internal identifiers use underscores. Default port is 9009.
 - README and all UI copy must state facts that match current behavior — the owner audits both for accuracy. Use neutral product language ("optional", purpose-first descriptions); no conversational phrasing that references feature requests or implementation history.
 - Deploy = push to `origin/main` (GHCR workflow publishes `latest`; semver tags on `v*.*.*`). The owner's standing workflow: review, test, then push after finishing.

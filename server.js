@@ -220,7 +220,7 @@ function requestPath(request) {
 
 function routeFamily(pathname) {
   if (pathname === "/health") return "both";
-  if (pathname === "/" || pathname === "/api/setup" || pathname === "/login" || pathname === "/logout" || pathname.startsWith("/api/admin")) return "admin";
+  if (pathname === "/" || pathname === "/api/setup" || pathname === "/login" || pathname === "/logout" || pathname === "/dashboard.css" || pathname === "/dashboard.js" || pathname.startsWith("/panels/") || pathname.startsWith("/api/admin")) return "admin";
   const apiRoute = parseApiRoute(pathname);
   const uploadRoute = parseUploadRoute(pathname);
   if (apiRoute || uploadRoute) return "api";
@@ -878,16 +878,48 @@ async function handleGeminiPassthrough(request, response, model, action) {
   return json(response, 502, { error: { code: 502, status: "BAD_GATEWAY", message: "Gemini did not respond on any attempted key" } });
 }
 
-const dashboardHtml = fs.readFileSync("dashboard.html", "utf8");
-const dashboardGzip = zlib.gzipSync(dashboardHtml);
+const dashboardAssetCache = new Map();
+function loadDashboardAsset(file) {
+  let entry = dashboardAssetCache.get(file);
+  if (!entry) {
+    const buffer = fs.readFileSync(`dashboard/${file}`);
+    entry = {
+      buffer,
+      gzip: zlib.gzipSync(buffer),
+      mime: file.endsWith(".css") ? "text/css; charset=utf-8" : (file.endsWith(".js") ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8"),
+    };
+    dashboardAssetCache.set(file, entry);
+  }
+  return entry;
+}
+
+function writeAsset(response, entry, request) {
+  if ((request.headers["accept-encoding"] || "").includes("gzip")) {
+    response.writeHead(200, { "Content-Type": entry.mime, "Content-Encoding": "gzip", Vary: "Accept-Encoding" });
+    return response.end(entry.gzip);
+  }
+  response.writeHead(200, { "Content-Type": entry.mime });
+  return response.end(entry.buffer);
+}
 
 function sendDashboard(request, response) {
-  if ((request.headers["accept-encoding"] || "").includes("gzip")) {
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Encoding": "gzip", Vary: "Accept-Encoding" });
-    return response.end(dashboardGzip);
+  return writeAsset(response, loadDashboardAsset("index.html"), request);
+}
+
+function serveDashboardAsset(request, response, assetPath) {
+  let file;
+  if (assetPath === "/dashboard.css" || assetPath === "/dashboard.js") {
+    file = assetPath.slice(1);
+  } else if (assetPath.startsWith("/panels/") && assetPath.endsWith(".html")) {
+    const name = assetPath.slice("/panels/".length, -".html".length);
+    if (!["overview", "gemini-keys", "client-keys", "request-logs", "statistics"].includes(name)) {
+      return json(response, 404, { error: "Not found" });
+    }
+    file = `panels/${name}.html`;
+  } else {
+    return json(response, 404, { error: "Not found" });
   }
-  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  return response.end(dashboardHtml);
+  return writeAsset(response, loadDashboardAsset(file), request);
 }
 
 async function handleRequest(request, response) {
@@ -922,6 +954,9 @@ async function handleRequest(request, response) {
       return response.end(staticPage("signin.html"));
     }
     return sendDashboard(request, response);
+  }
+  if (url.pathname === "/dashboard.css" || url.pathname === "/dashboard.js" || url.pathname.startsWith("/panels/")) {
+    return serveDashboardAsset(request, response, url.pathname);
   }
   if (url.pathname === "/api/setup" && request.method === "POST") {
     if (hasAdmin()) return json(response, 409, { error: "Setup is already complete" });

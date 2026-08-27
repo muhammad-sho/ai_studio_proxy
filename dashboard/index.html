@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI Studio Proxy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+<div class="shell">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-badge">AS</div>
+      <div>
+        <h1 class="brand-title">AI Studio Proxy</h1>
+        <p class="brand-sub">Gemini API Proxy &amp; Key Pool Manager</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-header" id="themeToggleBtn" onclick="toggleTheme()">🌙 Dark Mode</button>
+      <button class="btn-header" onclick="logout()">Sign Out</button>
+    </div>
+  </header>
+
+  <!-- Navigation -->
+  <nav class="nav-row">
+    <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview &amp; Usage</button>
+    <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
+    <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
+
+    <button class="nav-tab" data-tab="request-logs" onclick="showPanel('request-logs',this)">Request Logs</button>
+    <button class="nav-tab" data-tab="statistics" onclick="showPanel('statistics',this)">Statistics</button>
+  </nav>
+
+  <!-- Panels (populated by dashboard.js from /panels/*.html) -->
+  <div id="panel-overview" class="panel"></div>
+  <div id="panel-gemini-keys" class="panel"></div>
+  <div id="panel-client-keys" class="panel"></div>
+  <div id="panel-request-logs" class="panel"></div>
+  <div id="panel-statistics" class="panel"></div>
+
+</div>
+
+  <div id="logModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeLogModal()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <strong id="logModalTitle">Log</strong>
+        <span style="display:flex;gap:8px;align-items:center">
+          <button type="button" class="btn-tbl" onclick="copyLogDetail(this)">Copy Debug Details</button>
+          <button type="button" class="modal-x" onclick="closeLogModal()" title="Close">&times;</button>
+        </span>
+      </div>
+      <div class="modal-body" id="logModalBody"></div>
+    </div>
+  </div>
+
+  <div id="keyModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeKeyModal()">
+    <div class="modal-card" style="max-width:520px">
+      <div class="modal-head">
+        <strong id="keyModalTitle">Key</strong>
+        <button type="button" class="modal-x" onclick="closeKeyModal()" title="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="keyModalBody"></div>
+      </div>
+    </div>
+  </div>
+
+<script src="/dashboard.js"></script>
+</body>
+</html>
