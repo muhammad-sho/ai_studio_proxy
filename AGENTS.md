@@ -48,7 +48,7 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 - `GET /api/admin/usage` returns its complete historical response shape by default. The dashboard may pass `view=clients`, `view=gemini`, or `view=statistics` to request only the active tab's aggregates; preserve the default response when changing this route.
 - `request_logs` holds detailed debugging payloads; app logic never reads it — only the dashboard Logs view does. Retention (hourly sweep): expired cooldowns deleted immediately, request logs capped at 1,000 entries AND 7 days, `usage` rows never pruned.
 - Hot-path SQL goes through `prep(sql)`, which caches compiled statements — only for **fixed** SQL strings. Never pass dynamically interpolated SQL (filters, IN-lists) to `prep()`; that leaks memory. Buffered error responses write usage, cooldown state, and request logs atomically; successful responses record usage before their stream completes and record the capped diagnostic log at stream completion.
-- Schema changes are additive `CREATE TABLE IF NOT EXISTS` only — legacy ALTER-migrations were deliberately removed; don't add migration shims.
+- Schema setup is declarative: keep `CREATE TABLE IF NOT EXISTS` definitions and avoid ad-hoc `ALTER` routines.
 - `maskSecrets()` caches key→mask pairs; invalidate via `invalidateSecretMaskCache()` wherever keys are inserted/deleted.
 - Cookie names (`ai_studio_proxy_dashboard`/`_csrf`) and localStorage keys (`ai_studio_proxy_*`) are load-bearing identifiers renamed during the project rebrand — renaming them logs users out.
 
@@ -56,15 +56,14 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 
 The app is past initial testing and running for real users. Every change must be non-destructive: never break the app's availability and never lose or corrupt existing data.
 
-- Data migrations must be automatic, guarded, and idempotent (see `entrypoint.sh`: rename-only-if-target-missing). Never delete or overwrite user data; move it.
-- Schema changes are additive only (see Behavior contracts); new code must keep working against databases created by older versions.
-- Preserve env var names, defaults, cookie/localStorage names, API routes and response shapes — deprecate instead of removing; breaking renames need explicit owner approval.
-- Before pushing anything that touches storage or startup, test the upgrade path with a database/files laid out like an existing deployment (old filenames, populated tables), not just a fresh install.
-- If a change can't be made non-destructively, stop and ask the owner first.
+- Never delete, overwrite, or corrupt existing application data.
+- Preserve environment-variable names, defaults, cookie/localStorage names, API routes, and response shapes; breaking renames require explicit owner approval.
+- Before pushing storage or startup changes, validate a clean container boot with a new data directory.
+- If a change could discard or corrupt data, stop and ask the owner first.
 
 ## Naming & docs conventions
 
-- Known accepted trade-offs (former audit findings, deliberately not fixed): CSP allows `'unsafe-inline'` scripts (dashboard panels are injected with inline handlers); routing selection is per Gemini key and model while usage reports retain both Gemini and client attribution; `POST /v1beta/models` is accepted alongside GET (legacy compatibility); `dashboard/` assets are read and cached on first request, so UI edits need a restart. Don't "fix" these silently — they're owner-approved.
+- Known accepted trade-offs: CSP allows `'unsafe-inline'` scripts (dashboard panels are injected with inline handlers); routing selection is per Gemini key and model while usage reports retain both Gemini and client attribution; `dashboard/` assets are read and cached on first request, so UI edits need a restart. Don't "fix" these silently — they're owner-approved.
 - Repo is `ai_studio_proxy` (underscores); Docker image/service/container are `ai-studio-proxy` (hyphens); internal identifiers use underscores. Default port is 9009.
 - README and all UI copy must state facts that match current behavior — the owner audits both for accuracy. Use neutral product language ("optional", purpose-first descriptions); no conversational phrasing that references feature requests or implementation history.
 - Deploy = push to `origin/main` (GHCR workflow publishes `latest`; semver tags on `v*.*.*`). The owner's standing workflow: review, test, then push after finishing.
