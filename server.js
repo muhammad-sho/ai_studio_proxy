@@ -407,22 +407,29 @@ function pacificMonthRange(month) {
 
 function usageStats() {
   const start = pacificDayStart();
+  const now = Date.now();
   return prep(`
-    SELECT m.name AS model, k.id AS key_id, k.label,
+    WITH active_pairs AS (
+      SELECT model, gemini_key_id AS key_id, COUNT(*) AS today, MAX(created_at) AS last_request
+      FROM usage
+      WHERE ok = 1 AND created_at >= ? AND gemini_key_id IS NOT NULL
+      GROUP BY model, gemini_key_id
+      UNION ALL
+      SELECT model, key_id, 0 AS today, NULL AS last_request
+      FROM model_key_state
+      WHERE cooldown_until > ?
+    )
+    SELECT pairs.model, k.id AS key_id, k.label,
            substr(k.api_key, 1, 6) || '...' AS masked,
-           COUNT(u.id) AS today, MAX(u.created_at) AS last_request,
+           SUM(pairs.today) AS today, MAX(pairs.last_request) AS last_request,
            COALESCE(s.cooldown_until, 0) AS cooldown_until,
            COALESCE(s.cooldown_reason, '') AS cooldown_reason
-    FROM (SELECT name FROM models
-          UNION SELECT DISTINCT model AS name FROM usage WHERE ok = 1 AND created_at >= ?
-          UNION SELECT DISTINCT model AS name FROM model_key_state) m
-    CROSS JOIN (SELECT id, label, api_key FROM api_keys) k
-    LEFT JOIN usage u ON u.model = m.name AND u.gemini_key_id = k.id AND u.ok = 1 AND u.created_at >= ?
-    LEFT JOIN model_key_state s ON s.model = m.name AND s.key_id = k.id
-    GROUP BY m.name, k.id, k.label, k.api_key, s.cooldown_until, s.cooldown_reason
-    HAVING today > 0 OR cooldown_until > ?
-    ORDER BY m.name, k.id
-  `).all(start, start, Date.now());
+    FROM active_pairs pairs
+    JOIN api_keys k ON k.id = pairs.key_id
+    LEFT JOIN model_key_state s ON s.model = pairs.model AND s.key_id = pairs.key_id
+    GROUP BY pairs.model, k.id, k.label, k.api_key, s.cooldown_until, s.cooldown_reason
+    ORDER BY pairs.model, k.id
+  `).all(start, now);
 }
 
 let secretMaskCache = null;
