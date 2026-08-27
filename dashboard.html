@@ -728,16 +728,6 @@
         </table>
       </div>
     </div>
-
-      <div class="section-box">
-        <h2 class="section-title">Usage per model</h2>
-        <div class="table-wrap">
-          <table class="data-table usage-table">
-            <thead id="gmMatrixHead"></thead>
-            <tbody id="gmMatrixBody"><tr><td colspan="2" class="empty-notice">No requests recorded in this period.</td></tr></tbody>
-          </table>
-        </div>
-      </div>
   </div>
 
   <!-- Client Keys Panel -->
@@ -1317,7 +1307,6 @@
       tr.querySelector('.u-success').textContent = u.success;
       tr.querySelector('.u-pct').textContent = pct(u.success, u.total);
     });
-    buildMatrix('gmMatrixHead', 'gmMatrixBody', (pageUsage.matrix_gemini || []).filter(e => !String(e.label).startsWith('(deleted)')), 'key');
     buildMatrix('cmMatrixHead', 'cmMatrixBody', (pageUsage.matrix_client || []).filter(e => !String(e.label).startsWith('(deleted)')), 'model');
   }
 
