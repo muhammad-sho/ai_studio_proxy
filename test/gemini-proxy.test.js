@@ -63,7 +63,7 @@ function proxyFor(status, headers, body, observed = {}) {
 
 test("relays successful Gemini responses immediately when streaming is requested", async () => {
   const observed = {};
-  const proxy = proxyFor(200, { "content-type": "application/json" }, "{"ok":true}", observed);
+  const proxy = proxyFor(200, { "content-type": "application/json", "content-length": "11" }, '{"ok":true}', observed);
   const result = await proxy.forwardToGemini(
     { url: "/v1beta/models/test:generateContent", method: "POST", headers: { "x-goog-api-key": "client-key", host: "proxy" } },
     Buffer.from("{}"),
@@ -79,11 +79,24 @@ test("relays successful Gemini responses immediately when streaming is requested
   const chunks = [];
   result.response.on("data", (chunk) => chunks.push(chunk));
   await once(result.response, "end");
-  assert.equal(Buffer.concat(chunks).toString(), "{"ok":true}");
+  assert.equal(Buffer.concat(chunks).toString(), '{"ok":true}');
+});
+
+test("keeps unknown-size non-SSE responses on the bounded-buffer path", async () => {
+  const proxy = proxyFor(200, { "content-type": "application/json" }, '{"ok":true}');
+  const result = await proxy.forwardToGemini(
+    { url: "/v1beta/models/test:generateContent", method: "POST", headers: {} },
+    Buffer.from("{}"),
+    "gemini-key",
+    { stream: true }
+  );
+
+  assert.equal(result.stream, undefined);
+  assert.equal(result.body.toString(), '{"ok":true}');
 });
 
 test("keeps Gemini error responses buffered for existing error classification", async () => {
-  const proxy = proxyFor(429, { "content-type": "application/json" }, "{"error":{"status":"RESOURCE_EXHAUSTED"}}");
+  const proxy = proxyFor(429, { "content-type": "application/json" }, '{"error":{"status":"RESOURCE_EXHAUSTED"}}');
   const result = await proxy.forwardToGemini(
     { url: "/v1beta/models/test:generateContent", method: "POST", headers: {} },
     Buffer.from("{}"),
@@ -93,5 +106,5 @@ test("keeps Gemini error responses buffered for existing error classification", 
 
   assert.equal(result.stream, undefined);
   assert.equal(result.status, 429);
-  assert.equal(result.body.toString(), "{"error":{"status":"RESOURCE_EXHAUSTED"}}");
+  assert.equal(result.body.toString(), '{"error":{"status":"RESOURCE_EXHAUSTED"}}');
 });
