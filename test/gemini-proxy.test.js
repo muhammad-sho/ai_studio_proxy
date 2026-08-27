@@ -27,7 +27,7 @@ function fakeHttps(status, headers, body, observed) {
   };
 }
 
-function proxyFor(status, headers, body, observed = {}) {
+function proxyFor(status, headers, body, observed = {}, options = {}) {
   return createGeminiProxy({
     https: fakeHttps(status, headers, body, observed),
     crypto: {},
@@ -36,16 +36,16 @@ function proxyFor(status, headers, body, observed = {}) {
     log: () => {},
     dbg: () => {},
     maskKey: () => "masked...",
-    json: () => {},
+    json: options.json || (() => {}),
     requestPath: () => "/v1beta/models/test:generateContent",
     statsModelName: () => "test",
     REQUEST_TIMEOUT_MS: 1_000,
     MAX_RESPONSE_BYTES: 1_024,
     TRANSIENT_COOLDOWN_SECONDS: 60,
     MODELS_CACHE_TTL_MS: 60_000,
-    poolKeys: () => [],
-    setMeta: () => {},
-    getMeta: () => null,
+    poolKeys: options.poolKeys || (() => []),
+    setMeta: options.setMeta || (() => {}),
+    getMeta: options.getMeta || (() => null),
     pacificDayStart: () => 0,
     resolveClientKey: () => null,
     clientAddress: () => "127.0.0.1",
@@ -125,4 +125,42 @@ test("uses Bearer authentication for OpenAI-compatible upstream routes", async (
   assert.equal(result.stream, true);
   assert.equal(observed.options.headers.authorization, "Bearer gemini-key");
   assert.equal(observed.options.headers["x-goog-api-key"], undefined);
+});
+
+
+test("forwards model discovery directly without reading or writing a response cache", async () => {
+  const observed = {};
+  let cacheReads = 0;
+  let cacheWrites = 0;
+  const proxy = proxyFor(
+    200,
+    { "content-type": "application/json" },
+    '{"models":[{"name":"models/gemini-live"}]}',
+    observed,
+    {
+      poolKeys: () => [{ id: 7, api_key: "gemini-key" }],
+      getMeta: () => { cacheReads += 1; throw new Error("model cache must not be read"); },
+      setMeta: () => { cacheWrites += 1; },
+    },
+  );
+  const response = {
+    writableEnded: false,
+    destroyed: false,
+    headersSent: false,
+    on() {},
+    writeHead(status, headers) { this.status = status; this.headers = headers; this.headersSent = true; },
+    end(body) { this.body = body; this.writableEnded = true; },
+  };
+
+  await proxy.handleModelsList(
+    { url: "/v1beta/models?pageSize=1000", method: "GET", headers: {} },
+    response,
+  );
+
+  assert.equal(observed.options.path, "/v1beta/models?pageSize=1000");
+  assert.equal(observed.options.headers["x-goog-api-key"], "gemini-key");
+  assert.equal(response.status, 200);
+  assert.equal(response.body.toString(), '{"models":[{"name":"models/gemini-live"}]}');
+  assert.equal(cacheReads, 0);
+  assert.equal(cacheWrites, 0);
 });
