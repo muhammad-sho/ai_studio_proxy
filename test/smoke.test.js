@@ -101,14 +101,12 @@ test("keeps the admin and API port route families separate", async () => {
 });
 
 test("requires authentication for dashboard assets and admin APIs", async () => {
-  const [asset, state, signin] = await Promise.all([
+  const [asset, state] = await Promise.all([
     request(adminPort, "/dashboard.js"),
     request(adminPort, "/api/admin/state"),
-    request(adminPort, "/"),
   ]);
   assert.equal(asset.status, 401);
   assert.equal(state.status, 401);
-  assert.match(signin.body, /Forgot password/);
 });
 
 test("sets up an administrator and serves authenticated dashboard assets", async () => {
@@ -126,6 +124,9 @@ test("sets up an administrator and serves authenticated dashboard assets", async
     body: JSON.stringify({ username: "admin", password: "testpass123", passwordConfirmation: "testpass123" }),
   });
   assert.equal(setup.status, 201);
+
+  const signin = await request(adminPort, "/");
+  assert.match(signin.body, /Forgot password/);
 
   const login = await request(adminPort, "/login", {
     method: "POST",
