@@ -44,7 +44,9 @@ Then open:
 http://YOUR_SERVER_IP:9009
 ```
 
-The dashboard uses port 9009 and the Gemini-compatible proxy API uses port 9008.\n\nAdd your Gemini API keys and create a client key.
+The dashboard uses port 9009 and the Gemini-compatible proxy API uses port 9008.
+
+Add your Gemini API keys and create a client key.
 
 That's it.
 
