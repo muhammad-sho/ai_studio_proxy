@@ -53,8 +53,8 @@ const {
   setCooldownUntil, setCooldown, nextPacificReset,
 } = createUsage({ db, prep, log, maskKey, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES });
 const { handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticModelsRequest } = createGeminiProxy({
-  https, crypto, db, prep, log, dbg, maskKey, json, requestPath, statsModelName,
-  REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, MODELS_CACHE_TTL_MS,
+  https, crypto, db, prep, log, dbg, maskKey, json, readBody, requestPath, statsModelName,
+  REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, MODELS_CACHE_TTL_MS, LOG_BODY_MAX_BYTES,
   poolKeys, setMeta, getMeta, pacificDayStart, resolveClientKey, clientAddress,
   maskSecrets, clipBody, upstreamErrorPayload, errorCodeFromPayload, recordLog,
   recordUsageRow, setCooldown, setCooldownUntil, nextPacificReset, isOpenAiCompatibilityRoute,

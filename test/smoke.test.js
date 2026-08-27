@@ -159,6 +159,24 @@ test("sets up an administrator and serves authenticated dashboard assets", async
 });
 
 
+test("reads authenticated proxy request bodies before upstream selection", async () => {
+  const createClient = await request(adminPort, "/api/admin/client-keys", {
+    method: "POST",
+    headers: { cookie: adminCookie, "x-csrf-token": csrfToken, "content-type": "application/json" },
+    body: JSON.stringify({ label: "Body reader test" }),
+  });
+  assert.equal(createClient.status, 201);
+  const clientApiKey = JSON.parse(createClient.body).clientApiKey;
+
+  const proxied = await request(apiPort, "/v1beta/models/gemini-test:generateContent", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": clientApiKey },
+    body: JSON.stringify({ contents: [{ parts: [{ text: "body reader regression test" }] }] }),
+  });
+  assert.equal(proxied.status, 503);
+  assert.match(proxied.body, /No Gemini API keys/);
+});
+
 test("serves the complete authenticated dashboard panel set", async () => {
   const panels = ["overview", "gemini-keys", "client-keys", "request-logs", "statistics"];
   const responses = await Promise.all(panels.map((panel) =>
