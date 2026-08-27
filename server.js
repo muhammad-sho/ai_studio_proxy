@@ -1200,11 +1200,10 @@ async function handleRequest(request, response) {
   if (keyMatch && request.method === "DELETE") {
     const keyId = Number(keyMatch[1]);
     const deleted = db.prepare("SELECT label FROM api_keys WHERE id=?").get(keyId);
-    prep("DELETE FROM usage WHERE gemini_key_id=?").run(keyId);
     prep("DELETE FROM model_key_state WHERE key_id=?").run(keyId);
     prep("DELETE FROM api_keys WHERE id=?").run(keyId);
     invalidateSecretMaskCache();
-    log("info", "Admin", `Gemini key #${keyId}${deleted ? ` ('${deleted.label}')` : ""} deleted with its usage data`);
+    log("info", "Admin", `Gemini key #${keyId}${deleted ? ` ('${deleted.label}')` : ""} deleted; historical usage retained`);
     return json(response, 200, { ok: true });
   }
   if (apiRoute) {
