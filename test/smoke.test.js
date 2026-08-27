@@ -6,12 +6,15 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 
 const root = path.resolve(__dirname, "..");
 let adminPort;
 let apiPort;
 let dbDir;
 let child;
+let adminCookie;
+let csrfToken;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -107,16 +110,56 @@ test("sets up an administrator and serves authenticated dashboard assets", async
     body: "username=admin&password=testpass123",
   });
   assert.equal(login.status, 302);
-  const cookie = login.headers["set-cookie"].map((value) => value.split(";")[0]).join("; ");
+  adminCookie = login.headers["set-cookie"].map((value) => value.split(";")[0]).join("; ");
+  csrfToken = /ai_studio_proxy_csrf=([^;]+)/.exec(adminCookie)?.[1];
+  assert.ok(csrfToken);
 
   const [dashboard, asset, state] = await Promise.all([
-    request(adminPort, "/", { headers: { cookie } }),
-    request(adminPort, "/dashboard.js", { headers: { cookie } }),
-    request(adminPort, "/api/admin/state", { headers: { cookie } }),
+    request(adminPort, "/", { headers: { cookie: adminCookie } }),
+    request(adminPort, "/dashboard.js", { headers: { cookie: adminCookie } }),
+    request(adminPort, "/api/admin/state", { headers: { cookie: adminCookie } }),
   ]);
   assert.equal(dashboard.status, 200);
   assert.match(dashboard.body, /AI Studio Proxy/);
   assert.equal(asset.status, 200);
   assert.match(asset.headers["content-type"], /javascript/);
   assert.equal(state.status, 200);
+});
+
+test("retains historical usage when a Gemini key is deleted", async () => {
+  const authHeaders = { cookie: adminCookie, "x-csrf-token": csrfToken, "content-type": "application/json" };
+  const addGemini = await request(adminPort, "/api/admin/keys", {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ label: "History test", key: "AIza-history-test-key" }),
+  });
+  assert.equal(addGemini.status, 201);
+
+  const addClient = await request(adminPort, "/api/admin/client-keys", {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ label: "History client" }),
+  });
+  assert.equal(addClient.status, 201);
+
+  const beforeDelete = await request(adminPort, "/api/admin/state", { headers: { cookie: adminCookie } });
+  const state = JSON.parse(beforeDelete.body);
+  const geminiId = state.keys.find((key) => key.label === "History test").id;
+  const clientId = state.clientKeys.find((key) => key.label === "History client").id;
+
+  const database = new DatabaseSync(path.join(dbDir, "test.db"));
+  database.prepare("INSERT INTO usage (created_at,model,client_key_id,gemini_key_id,outcome,ok,status,error_code) VALUES (?,?,?,?,?,?,?,?)")
+    .run(Date.now(), "history-model", clientId, geminiId, "success", 1, 200, null);
+  database.close();
+
+  const deleted = await request(adminPort, "/api/admin/keys/" + geminiId, {
+    method: "DELETE",
+    headers: authHeaders,
+  });
+  assert.equal(deleted.status, 200);
+
+  const usage = await request(adminPort, "/api/admin/usage?period=all&view=gemini", { headers: { cookie: adminCookie } });
+  const report = JSON.parse(usage.body);
+  assert.equal(report.keys.find((key) => key.id === geminiId)?.total, 1);
+  assert.match(report.keys.find((key) => key.id === geminiId)?.label || "", /^\(deleted #/);
 });
