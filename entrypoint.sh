@@ -6,15 +6,6 @@ db_dir=$(dirname "$db_path")
 
 mkdir -p "$db_dir"
 
-legacy_db=/data/local-gemini-proxy.db
-if [ "$db_path" = "/data/ai-studio-proxy.db" ] && [ -e "$legacy_db" ] && [ ! -e "$db_path" ]; then
-  mv "$legacy_db" "$db_path"
-  for sidecar_suffix in -wal -shm; do
-    if [ -e "${legacy_db}${sidecar_suffix}" ]; then
-      mv "${legacy_db}${sidecar_suffix}" "${db_path}${sidecar_suffix}"
-    fi
-  done
-fi
 
 if [ -d "$db_path" ]; then
   echo "Database path is a directory: $db_path" >&2
