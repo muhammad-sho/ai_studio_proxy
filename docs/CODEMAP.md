@@ -17,7 +17,7 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | Gemini forwarding, uploads, streams, models | `lib/gemini-proxy.js` | Changing upstream pass-through behavior or latency |
 | Dashboard file loading, compression, and revalidation | `lib/dashboard-assets.js` | Changing dashboard static assets or their cache policy |
 | Dashboard UI | `dashboard/` | Changing presentation, lazy panel loading, or a panel controller |
-| Compatibility tests | `test/` | Adding a guard for a behavior or forwarding change |
+| Contract tests | `test/` | Adding a guard for a behavior or forwarding change |
 
 ## Module exports
 
@@ -38,10 +38,10 @@ Every module is initialized once by `server.js`. Modules receive dependencies as
 
 Dashboard modules follow the same boundary: `dashboard/dashboard.js` owns shell, authentication-aware fetches, navigation, and shared modals; a panel HTML file owns markup; its optional sibling `.js` file owns that panel's lazy controller. Keep a controller loaded only after its panel HTML is present.
 
-## Public compatibility contract
+## Public contract
 
 - Admin routes stay on `ADMIN_PORT`; Gemini-compatible API and upload routes stay on `API_PORT`; `/health` stays on both.
-- Existing environment variables, cookie names, local-storage names, API paths, methods, and response properties are preserved.
+- Published environment variables, cookie names, local-storage names, API paths, methods, and response properties stay stable.
 - Every proxy request uses exactly one selected Gemini key. Do not add retries, fallback attempts, or request/response rewriting.
 - Usage stays permanently retained, including after keys are deleted. Request logs remain separately retained under their existing policy.
 - Dashboard assets and admin endpoints require a valid dashboard session. State-changing admin requests also require CSRF validation.
