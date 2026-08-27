@@ -11,6 +11,7 @@
         </select>
         <input id="logSearch" class="form-input" style="flex:1;min-width:160px" placeholder="Search model, key label, status code..." oninput="clearTimeout(window.__logTimer);window.__logTimer=setTimeout(loadLogs,300)">
         <button type="button" class="btn-primary" onclick="loadLogs()">Refresh</button>
+        <button type="button" class="btn-tbl btn-tbl-danger" onclick="deleteRequestLogs()">Delete All Logs</button>
       </div>
       <div class="table-wrap">
         <table class="data-table">
