@@ -33,8 +33,9 @@ docker compose up -d
 docker run -d \
   --name ai-studio-proxy \
   -p 9009:9009 \
-  -v ./ai-studio-proxy.db:/app/ai-studio-proxy.db \
-  ghcr.io/muhammad-sho/ai_studio_proxy:latest
+  -p 9008:9008 \
+  -v ./data:/data \
+  ghcr.io/muhammad-sho/ai-studio-proxy:latest
 ```
 
 Then open:
@@ -43,7 +44,7 @@ Then open:
 http://YOUR_SERVER_IP:9009
 ```
 
-Add your Gemini API keys and create a client key.
+The dashboard uses port 9009 and the Gemini-compatible proxy API uses port 9008.\n\nAdd your Gemini API keys and create a client key.
 
 That's it.
 
