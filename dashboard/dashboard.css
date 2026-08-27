@@ -155,13 +155,32 @@
       padding: 22px;
       box-shadow: var(--shadow);
     }
+    .metric-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .metric-icon {
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 17px;
+      line-height: 1;
+      flex: 0 0 auto;
+    }
     .metric-label {
       font-size: 12px;
       font-weight: 700;
       color: var(--text-dim);
       text-transform: uppercase;
       letter-spacing: 0.04em;
-      margin-bottom: 8px;
+      margin-bottom: 0;
     }
     .metric-val {
       font-size: 36px;
