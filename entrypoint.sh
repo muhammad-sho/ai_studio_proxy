@@ -47,4 +47,5 @@ for sidecar in "${db_path}-wal" "${db_path}-shm"; do
   fi
 done
 
+export DB_PATH="$db_path"
 exec su-exec "$dir_uid:$dir_gid" node server.js
