@@ -1,5 +1,10 @@
 # AGENTS.md
 
+## Code navigation
+
+- Read [docs/CODEMAP.md](docs/CODEMAP.md) before editing server behavior. It maps each responsibility, public contract, test location, and debugging starting point.
+- Keep every server line within its documented owner. Cross-owner changes need a test for the shared behavior.
+
 ## Stack
 
 - Zero-dependency Node.js (22+): `server.js` (~1000 lines) is the entire backend — HTTP server, SQLite via built-in `node:sqlite`, upstream forwarding, and the dashboard/setup/sign-in UI.
