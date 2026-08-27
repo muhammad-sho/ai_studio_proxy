@@ -5,14 +5,10 @@ services:
     restart: unless-stopped
     ports:
       - "9009:9009"
-      # Optional: expose the API on its own port (also set API_PORT below)
-      # - "9008:9008"
+      - "9008:9008"
     volumes:
       - ./data:/data:Z
     environment:
-      PORT: 9009
+      ADMIN_PORT: 9009
+      API_PORT: 9008
       DB_PATH: /data/ai-studio-proxy.db
-      # Optional: run the admin dashboard and API on separate ports
-      # (uncomment the API port mapping above too)
-      # ADMIN_PORT: 9009
-      # API_PORT: 9008

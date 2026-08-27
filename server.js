@@ -5,9 +5,8 @@ const fs = require("node:fs");
 const zlib = require("node:zlib");
 const { DatabaseSync } = require("node:sqlite");
 
-const PORT = Number(process.env.PORT || 9009);
-const ADMIN_PORT = Number(process.env.ADMIN_PORT || PORT);
-const API_PORT = Number(process.env.API_PORT || PORT);
+const ADMIN_PORT = Number(process.env.ADMIN_PORT || 9009);
+const API_PORT = Number(process.env.API_PORT || 9008);
 const DB_PATH = process.env.DB_PATH || "./ai-studio-proxy.db";
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 50 * 1024 * 1024);
@@ -1187,7 +1186,7 @@ function makeServer(family) {
       if (!response.writableEnded) log("warn", "HTTP", `${request.method} ${requestPath(request)} ABORTED by client after ${Date.now() - startedAt}ms from ${peer}`);
     });
     const fam = routeFamily(requestPath(request));
-    if (family !== null && fam !== "both" && fam !== family) {
+    if (fam !== "both" && fam !== family) {
       log("warn", "HTTP", `${request.method} ${requestPath(request)} rejected on ${family === "admin" ? "admin" : "api"} port from ${peer}`);
       return json(response, 404, { error: "Not found on this port" });
     }
@@ -1204,7 +1203,6 @@ function makeServer(family) {
   return server;
 }
 
-const splitListen = ADMIN_PORT !== API_PORT;
 const servers = [];
 function startServer(server, port, label) {
   return new Promise((resolve, reject) => {
@@ -1217,16 +1215,10 @@ function startServer(server, port, label) {
 }
 
 const setupPromise = (async () => {
-  if (splitListen) {
-    servers.push(makeServer("admin"));
-    servers.push(makeServer("api"));
-    await startServer(servers[0], ADMIN_PORT, "admin/dashboard");
-    await startServer(servers[1], API_PORT, "API");
-  } else {
-    const combined = makeServer(null);
-    servers.push(combined);
-    await startServer(combined, PORT, "combined");
-  }
+  servers.push(makeServer("admin"));
+  servers.push(makeServer("api"));
+  await startServer(servers[0], ADMIN_PORT, "admin/dashboard");
+  await startServer(servers[1], API_PORT, "API");
   if (!hasAdmin()) log("info", "Setup", "no administrator yet; open the web dashboard to create one");
 })().catch((error) => {
   log("error", "Boot", `cannot start server: ${error.message}`);

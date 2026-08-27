@@ -62,7 +62,7 @@ https://generativelanguage.googleapis.com
 to:
 
 ```text
-http://YOUR_SERVER_IP:9009
+http://YOUR_SERVER_IP:9008
 ```
 
 Put your **client key** in the **same `x-goog-api-key` header** Google uses.
@@ -79,7 +79,7 @@ curl https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:ge
 ### After
 
 ```bash
-curl http://YOUR_SERVER_IP:9009/v1beta/models/gemini-2.5-flash:generateContent \
+curl http://YOUR_SERVER_IP:9008/v1beta/models/gemini-2.5-flash:generateContent \
   -H "x-goog-api-key: YOUR_CLIENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"contents":[{"parts":[{"text":"Hello"}]}]}'
@@ -122,19 +122,6 @@ The dashboard lets you:
 * View cooldowns
 * View request logs
 * View statistics
-
----
-
-## Ports
-
-By default the dashboard and the API share one port (`9009`). Set `ADMIN_PORT` and `API_PORT` to **different values** to run them on separate ports — useful when exposing the API to the internet while keeping the admin dashboard on a private one:
-
-```text
-ADMIN_PORT=9009   # dashboard — keep private
-API_PORT=9008     # your apps talk to this one
-```
-
-The API port serves only the Gemini/AI Studio API. The dashboard and admin routes are only on the admin port.
 
 ---
 
