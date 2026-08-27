@@ -27,6 +27,8 @@ curl -fsSL -o docker-compose.yml \
 docker compose up -d
 ```
 
+For production settings, reverse-proxy guidance, health checks, upgrades, and backups, see the [deployment guide](docs/DEPLOYMENT.md).
+
 ### Docker CLI
 
 ```bash

@@ -64,7 +64,7 @@ listener → route-family gate → request handler
 | Wrong key was selected | `lib/usage.js` | usage/cooldown tests |
 | Gemini response differs from upstream | `lib/gemini-proxy.js` | `test/gemini-proxy.test.js` and smoke tests |
 | Statistics are missing | `lib/usage.js` | retained-usage test |
-| Container starts but app is unavailable | `Dockerfile`, `entrypoint.sh` | CI container-start smoke check |
+| Container starts but app is unavailable | `Dockerfile`, `entrypoint.sh`, `docker-compose.yml` | CI Compose deployment check |
 
 ## Refactoring rule
 

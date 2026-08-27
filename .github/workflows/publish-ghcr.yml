@@ -42,20 +42,20 @@ jobs:
           push: false
           tags: ai-studio-proxy:ci
 
-      - name: Verify container startup
+      - name: Verify Compose deployment
         run: |
-          mkdir -p ci-data
-          docker run -d --name ai-studio-proxy-ci \
-            -p 19009:9009 -p 19008:9008 \
-            -v "$PWD/ci-data:/data" \
-            ai-studio-proxy:ci
+          export AI_STUDIO_PROXY_IMAGE=ai-studio-proxy:ci
+          export ADMIN_PORT=19109
+          export API_PORT=19108
+          export DATA_DIR="$PWD/ci-data"
+          project=ai-studio-proxy-ci
+          mkdir -p "$DATA_DIR"
           cleanup() {
             status=$?
             if [ "$status" -ne 0 ]; then
-              docker inspect ai-studio-proxy-ci || true
-              docker logs ai-studio-proxy-ci || true
+              docker compose -p "$project" logs || true
             fi
-            docker rm -f ai-studio-proxy-ci || true
+            docker compose -p "$project" down --volumes --remove-orphans || true
             trap - EXIT
             exit "$status"
           }
@@ -71,9 +71,15 @@ jobs:
             echo "Timed out waiting for $url" >&2
             return 1
           }
-          wait_for_health http://127.0.0.1:19009/health
-          wait_for_health http://127.0.0.1:19008/health
-          test -f ci-data/ai-studio-proxy.db
+          docker compose -p "$project" config --quiet
+          docker compose -p "$project" up -d
+          wait_for_health http://127.0.0.1:$ADMIN_PORT/health
+          wait_for_health http://127.0.0.1:$API_PORT/health
+          test -f "$DATA_DIR/ai-studio-proxy.db"
+          if docker run --rm -e DB_PATH=/ai-studio-proxy.db ai-studio-proxy:ci >/dev/null 2>&1; then
+            echo "unsafe DB_PATH unexpectedly started the container" >&2
+            exit 1
+          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
