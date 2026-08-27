@@ -956,6 +956,7 @@ async function handleRequest(request, response) {
     return sendDashboard(request, response);
   }
   if (url.pathname === "/dashboard.css" || url.pathname === "/dashboard.js" || url.pathname.startsWith("/panels/")) {
+    if (!dashboardSessionValid(request)) return json(response, 401, { error: "Dashboard login required" });
     return serveDashboardAsset(request, response, url.pathname);
   }
   if (url.pathname === "/api/setup" && request.method === "POST") {
