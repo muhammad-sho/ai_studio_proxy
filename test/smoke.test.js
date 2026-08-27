@@ -144,8 +144,17 @@ test("serves the complete authenticated dashboard panel set", async () => {
     assert.equal(response.status, 200);
     assert.match(response.headers["content-type"], /html/);
   }
+  const controllers = await Promise.all(["request-logs", "statistics"].map((panel) =>
+    request(adminPort, "/panels/" + panel + ".js", { headers: { cookie: adminCookie } })
+  ));
+  for (const controller of controllers) {
+    assert.equal(controller.status, 200);
+    assert.match(controller.headers["content-type"], /javascript/);
+  }
   const missing = await request(adminPort, "/panels/unknown.html", { headers: { cookie: adminCookie } });
   assert.equal(missing.status, 404);
+  const missingController = await request(adminPort, "/panels/overview.js", { headers: { cookie: adminCookie } });
+  assert.equal(missingController.status, 404);
 });
 
 test("retains historical usage when a Gemini key is deleted", async () => {
