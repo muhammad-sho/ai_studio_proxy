@@ -4,23 +4,16 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const zlib = require("node:zlib");
 const { DatabaseSync } = require("node:sqlite");
+const { loadConfig } = require("./lib/config");
 
-const ADMIN_PORT = Number(process.env.ADMIN_PORT || 9009);
-const API_PORT = Number(process.env.API_PORT || 9008);
-const DB_PATH = process.env.DB_PATH || "./ai-studio-proxy.db";
-const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
-const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 50 * 1024 * 1024);
-const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
-const TRANSIENT_COOLDOWN_SECONDS = 60;
-const LOG_BODY_MAX_BYTES = Math.max(1024, Number(process.env.LOG_BODY_MAX_BYTES || 64 * 1024));
-const MAX_LOG_ENTRIES = Math.max(50, Number(process.env.MAX_LOG_ENTRIES || 1000));
-const MODELS_CACHE_TTL_MS = Number(process.env.MODELS_CACHE_TTL_HOURS || 24) * 60 * 60 * 1000;
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const {
+  ADMIN_PORT, API_PORT, DB_PATH, REQUEST_TIMEOUT_MS, MAX_BODY_BYTES, MAX_RESPONSE_BYTES,
+  TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, MODELS_CACHE_TTL_MS,
+  SESSION_TTL_MS, TRUST_PROXY, DEBUG, CORS_ORIGIN,
+} = loadConfig();
 const sessions = new Map();
 const loginAttempts = new Map();
 const loginFailures = [];
-const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || "");
-const DEBUG = /^(1|true|yes)$/i.test(process.env.DEBUG || "");
 const COOKIE_SESSION = "ai_studio_proxy_dashboard";
 const COOKIE_CSRF = "ai_studio_proxy_csrf";
 
@@ -300,7 +293,6 @@ function createClientKey(label) {
 }
 
 const PASS_THROUGH_ACTIONS = new Set(["generateContent", "streamGenerateContent", "countTokens", "embedContent", "batchEmbedContents", "asyncBatchEmbedContent", "predict", "predictLongRunning"]);
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer"]);
 
 function parseApiRoute(pathname) {
