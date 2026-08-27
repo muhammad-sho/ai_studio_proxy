@@ -71,15 +71,13 @@
 
   function render(data) {
     const totalReq = (data.usage || []).reduce((s, r) => s + (r.today || 0), 0);
-    const models = data.models || [];
-
     const setText = (id, value) => {
       const element = document.getElementById(id);
       if (element) element.textContent = value;
     };
     setText('ov-ck', (data.clientKeys || []).length);
     setText('ov-gk', (data.keys || []).length);
-    setText('ov-m', models.length);
+    setText('ov-balance', data.balanceScore == null ? '—' : `${data.balanceScore}%`);
     setText('ov-r', totalReq);
 
     const ck = data.clientKeys || [];
