@@ -33,10 +33,17 @@ test("uses request-body model for OpenAI inference routes", () => {
   assert.equal(route.model, "gemini-3.1-flash-lite");
   assert.equal(route.statsModel, "gemini-3.1-flash-lite");
   assert.equal(route.trackUsage, true);
+  assert.equal("balanceByModel" in route, false);
 });
 
 test("does not treat malformed or missing model bodies as a real model", () => {
   assert.equal(requestModelFromBody(Buffer.from("{bad")), null);
   const route = classifyRoute("/v1beta/openai/chat/completions", "POST", null, null, Buffer.from("{}"));
   assert.equal(route.statsModel, "/v1beta/openai/chat/completions");
+});
+
+
+test("short-circuits metadata classification before inspecting request bodies", () => {
+  const route = classifyRoute("/v1beta/openai/models", "GET", null, null, Buffer.from("not-json"));
+  assert.deepEqual(route, { kind: "metadata", model: null, trackUsage: false });
 });
