@@ -53,7 +53,7 @@ test("short-circuits metadata classification before inspecting request bodies", 
   const route = classifyRoute("/v1beta/openai/models", "GET", null, null, Buffer.from("not-json"));
   assert.deepEqual(route, { kind: "metadata", model: null, statsModel: null, logModel: "[metadata]", trackUsage: false });
   const alias = classifyRoute("/v1/models", "GET", null, null, Buffer.from("not-json"), { authorization: "Bearer proxy-client-key" });
-  assert.deepEqual(alias, { kind: "metadata", model: null, trackUsage: false });
+  assert.deepEqual(alias, { kind: "metadata", model: null, statsModel: null, logModel: "[metadata]", trackUsage: false });
 });
 
 
