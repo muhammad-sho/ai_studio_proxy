@@ -492,6 +492,7 @@
   function buildMatrix(headId, bodyId, entries) {
     const headEl = document.getElementById(headId);
     const bodyEl = document.getElementById(bodyId);
+    if (!headEl || !bodyEl) return;
     if (!entries.length) {
       headEl.innerHTML = '';
       bodyEl.innerHTML = '<tr><td colspan="2" class="empty-notice">No requests recorded in this period.</td></tr>';
