@@ -8,14 +8,15 @@
 ## Stack
 
 - Zero-dependency Node.js (22+): `server.js` is the bootstrap only. Backend ownership is split under `lib/` for configuration, SQLite, HTTP, authentication, routing, dashboard assets, usage, Gemini forwarding, and request handlers; see `docs/CODEMAP.md`.
-- The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` fetches `/panels/<name>.html` partials (one per tab) and injects them. All assets are lazy-read from disk and cached on first request, served only on the admin port. `setup.html` and `signin.html` are the two minimal auth pages, also lazy-read.
+- The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` owns navigation and shared UI; each tab has a `panels/<name>.html` partial and may have a sibling lazy controller. Only the active tab is fetched initially; visited tabs are kept in browser memory. Assets are authenticated, cached in-process, and privately revalidated with ETags. `setup.html` and `signin.html` are the two minimal auth pages, also lazy-read.
 - No `package.json`, external test framework, linter, or runtime dependencies. The built-in `node:test` suite in `test/` is required for behavior changes.
 
 ## Verification
 
 ```bash
 node --check server.js
-node --check dashboard/dashboard.js
+find lib -type f -name '*.js' -print0 | xargs -0 -r -n 1 node --check
+find dashboard -type f -name '*.js' -print0 | xargs -0 -r -n 1 node --check
 node --test
 sh -n entrypoint.sh
 python3 -c "import yaml; [yaml.safe_load(open(f)) for f in ['docker-compose.yml','docker-compose.dev.yml','.github/workflows/publish-ghcr.yml']]"
@@ -46,7 +47,7 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 - `usage` table is the single source of truth for every request (client key, Gemini key, model, outcome, status, error code); it is kept forever, including after either key is deleted, and is read by routing only through ok=1/since-reset filters.
 - `GET /api/admin/usage` returns its complete historical response shape by default. The dashboard may pass `view=clients`, `view=gemini`, or `view=statistics` to request only the active tab's aggregates; preserve the default response when changing this route.
 - `request_logs` holds detailed debugging payloads; app logic never reads it — only the dashboard Logs view does. Retention (hourly sweep): expired cooldowns deleted immediately, request logs capped at 1,000 entries AND 7 days, `usage` rows never pruned.
-- Hot-path SQL goes through `prep(sql)`, which caches compiled statements — only for **fixed** SQL strings. Never pass dynamically interpolated SQL (filters, IN-lists) to `prep()`; that leaks memory. Terminal bookkeeping per request (usage insert, cooldown upsert, request log, model stat) runs in a single transaction.
+- Hot-path SQL goes through `prep(sql)`, which caches compiled statements — only for **fixed** SQL strings. Never pass dynamically interpolated SQL (filters, IN-lists) to `prep()`; that leaks memory. Buffered error responses write usage, cooldown state, and request logs atomically; successful responses record usage before their stream completes and record the capped diagnostic log at stream completion.
 - Schema changes are additive `CREATE TABLE IF NOT EXISTS` only — legacy ALTER-migrations were deliberately removed; don't add migration shims.
 - `maskSecrets()` caches key→mask pairs; invalidate via `invalidateSecretMaskCache()` wherever keys are inserted/deleted.
 - Cookie names (`ai_studio_proxy_dashboard`/`_csrf`) and localStorage keys (`ai_studio_proxy_*`) are load-bearing identifiers renamed during the project rebrand — renaming them logs users out.
@@ -63,7 +64,7 @@ The app is past initial testing and running for real users. Every change must be
 
 ## Naming & docs conventions
 
-- Known accepted trade-offs (former audit findings, deliberately not fixed): CSP allows `'unsafe-inline'` scripts (dashboard panels are injected with inline handlers); usage attribution is per Gemini key only, not per client key; `POST /v1beta/models` is accepted alongside GET (legacy compatibility); `dashboard/` assets are read and cached on first request, so UI edits need a restart. Don't "fix" these silently — they're owner-approved.
+- Known accepted trade-offs (former audit findings, deliberately not fixed): CSP allows `'unsafe-inline'` scripts (dashboard panels are injected with inline handlers); routing selection is per Gemini key and model while usage reports retain both Gemini and client attribution; `POST /v1beta/models` is accepted alongside GET (legacy compatibility); `dashboard/` assets are read and cached on first request, so UI edits need a restart. Don't "fix" these silently — they're owner-approved.
 - Repo is `ai_studio_proxy` (underscores); Docker image/service/container are `ai-studio-proxy` (hyphens); internal identifiers use underscores. Default port is 9009.
 - README and all UI copy must state facts that match current behavior — the owner audits both for accuracy. Use neutral product language ("optional", purpose-first descriptions); no conversational phrasing that references feature requests or implementation history.
 - Deploy = push to `origin/main` (GHCR workflow publishes `latest`; semver tags on `v*.*.*`). The owner's standing workflow: review, test, then push after finishing.
