@@ -135,18 +135,6 @@ The dashboard lets you:
 
 ---
 
-## Docker Commands
-
-```bash
-docker compose up -d       # Start
-docker compose down        # Stop
-docker compose restart     # Restart
-docker compose pull && docker compose up -d   # Update
-docker compose logs -f     # Logs
-```
-
----
-
 ## Repository
 
 [GitHub Repository](https://github.com/muhammad-sho/ai_studio_proxy?utm_source=chatgpt.com)
