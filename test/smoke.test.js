@@ -123,7 +123,29 @@ test("sets up an administrator and serves authenticated dashboard assets", async
   assert.match(dashboard.body, /AI Studio Proxy/);
   assert.equal(asset.status, 200);
   assert.match(asset.headers["content-type"], /javascript/);
+  assert.match(asset.headers["cache-control"], /private/);
+  assert.ok(asset.headers.etag);
+
+  const revalidatedAsset = await request(adminPort, "/dashboard.js", {
+    headers: { cookie: adminCookie, "if-none-match": asset.headers.etag },
+  });
+  assert.equal(revalidatedAsset.status, 304);
+  assert.equal(revalidatedAsset.body, "");
   assert.equal(state.status, 200);
+});
+
+
+test("serves the complete authenticated dashboard panel set", async () => {
+  const panels = ["overview", "gemini-keys", "client-keys", "request-logs", "statistics"];
+  const responses = await Promise.all(panels.map((panel) =>
+    request(adminPort, "/panels/" + panel + ".html", { headers: { cookie: adminCookie } })
+  ));
+  for (const response of responses) {
+    assert.equal(response.status, 200);
+    assert.match(response.headers["content-type"], /html/);
+  }
+  const missing = await request(adminPort, "/panels/unknown.html", { headers: { cookie: adminCookie } });
+  assert.equal(missing.status, 404);
 });
 
 test("retains historical usage when a Gemini key is deleted", async () => {
