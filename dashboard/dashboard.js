@@ -212,6 +212,26 @@
     table.addEventListener('mouseleave', clear);
   }
 
+  async function confirmedDelete(url, phrase, label) {
+    if (!window.confirm(`Delete all ${label}? This cannot be undone.`)) return;
+    if (!window.confirm(`Final confirmation: permanently delete all ${label} now?`)) return;
+    try {
+      const result = await api(url, { method: 'DELETE', body: JSON.stringify({ confirm: phrase }) });
+      alert(`Deleted ${result.deleted || 0} ${label}.`);
+      pageUsage = null;
+      await load();
+      if (window.loadLogs) await window.loadLogs();
+    } catch (err) { alert(err.message); }
+  }
+
+  function deleteUsageHistory() {
+    return confirmedDelete('/api/admin/usage', 'DELETE USAGE', 'usage history');
+  }
+
+  function deleteRequestLogs() {
+    return confirmedDelete('/api/admin/logs', 'DELETE LOGS', 'request logs');
+  }
+
   async function clearCooldowns() {
     try {
       await api('/api/admin/cooldowns/clear', { method: 'POST' });
