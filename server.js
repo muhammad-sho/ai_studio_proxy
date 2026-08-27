@@ -6,6 +6,8 @@ const zlib = require("node:zlib");
 const { DatabaseSync } = require("node:sqlite");
 
 const PORT = Number(process.env.PORT || 9009);
+const ADMIN_PORT = Number(process.env.ADMIN_PORT || PORT);
+const API_PORT = Number(process.env.API_PORT || PORT);
 const DB_PATH = process.env.DB_PATH || "./ai-studio-proxy.db";
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 50 * 1024 * 1024);
@@ -209,6 +211,15 @@ function clientAddress(request) {
 
 function requestPath(request) {
   try { return new URL(request.url, "http://localhost").pathname; } catch { return request.url.split("?")[0]; }
+}
+
+function routeFamily(pathname) {
+  if (pathname === "/health") return "both";
+  if (pathname === "/" || pathname === "/api/setup" || pathname === "/login" || pathname === "/logout" || pathname.startsWith("/api/admin")) return "admin";
+  const apiRoute = parseApiRoute(pathname);
+  const uploadRoute = parseUploadRoute(pathname);
+  if (apiRoute || uploadRoute) return "api";
+  return null;
 }
 
 function pruneLoginAttempts() {
@@ -1164,31 +1175,70 @@ async function handleRequest(request, response) {
   return json(response, 404, { error: "Not found" });
 }
 
-const server = http.createServer((request, response) => {
-  response.on("error", () => {});
-  const startedAt = Date.now();
-  const peer = clientAddress(request);
-  response.on("finish", () => {
-    log("info", "HTTP", `${request.method} ${requestPath(request)} -> ${response.statusCode} (${Date.now() - startedAt}ms) from ${peer}`);
+function makeServer(family) {
+  const server = http.createServer((request, response) => {
+    response.on("error", () => {});
+    const startedAt = Date.now();
+    const peer = clientAddress(request);
+    response.on("finish", () => {
+      log("info", "HTTP", `${request.method} ${requestPath(request)} -> ${response.statusCode} (${Date.now() - startedAt}ms) from ${peer}`);
+    });
+    response.on("close", () => {
+      if (!response.writableEnded) log("warn", "HTTP", `${request.method} ${requestPath(request)} ABORTED by client after ${Date.now() - startedAt}ms from ${peer}`);
+    });
+    const fam = routeFamily(requestPath(request));
+    if (family !== null && fam !== "both" && fam !== family) {
+      log("warn", "HTTP", `${request.method} ${requestPath(request)} rejected on ${family === "admin" ? "admin" : "api"} port from ${peer}`);
+      return json(response, 404, { error: "Not found on this port" });
+    }
+    handleRequest(request, response).catch((error) => {
+      log("error", "HTTP", `handler failed for ${request.method} ${requestPath(request)}: ${error.stack || error.message}`);
+      if (!response.headersSent) json(response, error.status || 500, { error: "Internal server error" });
+      else response.destroy();
+    });
   });
-  response.on("close", () => {
-    if (!response.writableEnded) log("warn", "HTTP", `${request.method} ${requestPath(request)} ABORTED by client after ${Date.now() - startedAt}ms from ${peer}`);
+  server.on("error", (error) => {
+    log("error", "Boot", `cannot start server on ${family === "admin" ? `admin port ${ADMIN_PORT}` : `api port ${API_PORT}`}: ${error.message}`);
+    process.exit(1);
   });
-  handleRequest(request, response).catch((error) => {
-    log("error", "HTTP", `handler failed for ${request.method} ${requestPath(request)}: ${error.stack || error.message}`);
-    if (!response.headersSent) json(response, error.status || 500, { error: "Internal server error" });
-    else response.destroy();
-  });
-});
+  return server;
+}
 
-server.on("error", (error) => {
+const splitListen = ADMIN_PORT !== API_PORT;
+const servers = [];
+function startServer(server, port, label) {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "0.0.0.0", () => {
+      log("info", "Boot", `AI Studio Proxy ${label} listening on port ${port}${DEBUG ? " (debug logging enabled)" : " (set DEBUG=1 for debug logging)"}`);
+      resolve();
+    });
+  });
+}
+
+const setupPromise = (async () => {
+  if (splitListen) {
+    servers.push(makeServer("admin"));
+    servers.push(makeServer("api"));
+    await startServer(servers[0], ADMIN_PORT, "admin/dashboard");
+    await startServer(servers[1], API_PORT, "API");
+  } else {
+    const combined = makeServer(null);
+    servers.push(combined);
+    await startServer(combined, PORT, "combined");
+  }
+  if (!hasAdmin()) log("info", "Setup", "no administrator yet; open the web dashboard to create one");
+})().catch((error) => {
   log("error", "Boot", `cannot start server: ${error.message}`);
   process.exit(1);
 });
 
 function shutdown(signal) {
   log("info", "Shutdown", `${signal} received; closing server`);
-  server.close(() => { try { db.close(); } catch {} process.exit(0); });
+  let remaining = servers.length;
+  const finish = () => { try { db.close(); } catch {} process.exit(0); };
+  if (!remaining) return finish();
+  for (const server of servers) server.close(() => { if (--remaining === 0) finish(); });
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.on("unhandledRejection", (reason) => {
@@ -1208,10 +1258,5 @@ setInterval(() => {
     if (expired) dbg("Auth", `pruned ${expired} expired session(s)`);
   } catch (error) { log("error", "Usage", `sweep failed: ${error.message}`); }
 }, 60_000).unref();
-
-server.listen(PORT, "0.0.0.0", () => {
-  log("info", "Boot", `AI Studio Proxy listening on port ${PORT}${DEBUG ? " (debug logging enabled)" : " (set DEBUG=1 for debug logging)"}`);
-  if (!hasAdmin()) log("info", "Setup", "no administrator yet; open the web dashboard to create one");
-});
 
 sweepDailyReset();

@@ -125,6 +125,19 @@ The dashboard lets you:
 
 ---
 
+## Ports
+
+By default the dashboard and the API share one port (`9009`). Set `ADMIN_PORT` and `API_PORT` to **different values** to run them on separate ports — useful when exposing the API to the internet while keeping the admin dashboard on a private one:
+
+```text
+ADMIN_PORT=9009   # dashboard — keep private
+API_PORT=9008     # your apps talk to this one
+```
+
+The API port serves only the Gemini/AI Studio API. The dashboard and admin routes are only on the admin port.
+
+---
+
 ## Repository
 
 [GitHub Repository](https://github.com/muhammad-sho/ai_studio_proxy?utm_source=chatgpt.com)
