@@ -43,7 +43,7 @@ Dashboard modules follow the same boundary: `dashboard/dashboard.js` owns shell,
 - Admin routes stay on `ADMIN_PORT`; Gemini-compatible API and upload routes stay on `API_PORT`; `/health` stays on both.
 - Published environment variables, cookie names, local-storage names, API paths, methods, and response properties stay stable.
 - Every HTTP proxy request uses exactly one selected Gemini key. Native Gemini routes use `x-goog-api-key`; OpenAI-compatible routes use Bearer authentication. Do not add retries, fallback attempts, or request/response rewriting.
-- Usage stays permanently retained, including after keys are deleted. Request logs remain separately retained under their existing policy.
+- Usage stays permanently retained by default, including after keys are deleted. When explicitly configured, `USAGE_RETENTION_DAYS` may prune older usage rows. Request logs remain separately retained under their existing policy.
 - Dashboard assets and admin endpoints require a valid dashboard session. State-changing admin requests also require CSRF validation.
 
 ## Request flow
