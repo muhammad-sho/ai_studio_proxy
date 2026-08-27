@@ -602,7 +602,6 @@
       showClientKey(data.clientApiKey);
       event.target.reset();
       showPanel('client-keys');
-      load();
     } catch (err) { alert(err.message); }
   };
 
@@ -618,7 +617,6 @@
         await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: form.get('label'), key: keys[0] }) });
         event.target.reset();
         showPanel('gemini-keys');
-        load();
         return;
       }
       const data = await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ keys }) });
