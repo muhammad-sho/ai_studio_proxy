@@ -9,8 +9,10 @@
 ## Verification (no test suite exists)
 
 ```bash
-node --check server.js          # JS syntax
-sh -n entrypoint.sh             # shell syntax
+node --check server.js
+node --check dashboard/dashboard.js
+node --test
+sh -n entrypoint.sh
 python3 -c "import yaml; [yaml.safe_load(open(f)) for f in ['docker-compose.yml','docker-compose.dev.yml','.github/workflows/publish-ghcr.yml']]"
 ```
 
@@ -36,7 +38,8 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 - Every request is attempted exactly once on the best available key (least-used ready, else soonest-expiring cooldown); the upstream response is always relayed as-is. Do not reintroduce retry/fallback logic without asking.
 - The proxy is a strict pass-through: all methods and any path under v1/v1beta/v1alpha are forwarded (including SSE streaming), with only hop-by-hop/credential headers stripped and the API key swapped. Don't add request/response rewriting or re-introduce endpoint allowlists without asking.
 - Cooldowns have exactly two cases: transient failures bench a key 60 s (`TRANSIENT_COOLDOWN_SECONDS`), daily-quota benches until Pacific midnight. Don't reintroduce other cooldown sources without asking.
-- `usage` table is the single source of truth for every request (client key, Gemini key, model, outcome, status, error code); it is kept forever and read by routing only through ok=1/since-reset filters.
+- `usage` table is the single source of truth for every request (client key, Gemini key, model, outcome, status, error code); it is kept forever, including after either key is deleted, and is read by routing only through ok=1/since-reset filters.
+- `GET /api/admin/usage` returns its complete historical response shape by default. The dashboard may pass `view=clients`, `view=gemini`, or `view=statistics` to request only the active tab's aggregates; preserve the default response when changing this route.
 - `request_logs` holds detailed debugging payloads; app logic never reads it — only the dashboard Logs view does. Retention (hourly sweep): expired cooldowns deleted immediately, request logs capped at 1,000 entries AND 7 days, `usage` rows never pruned.
 - Hot-path SQL goes through `prep(sql)`, which caches compiled statements — only for **fixed** SQL strings. Never pass dynamically interpolated SQL (filters, IN-lists) to `prep()`; that leaks memory. Terminal bookkeeping per request (usage insert, cooldown upsert, request log, model stat) runs in a single transaction.
 - Schema changes are additive `CREATE TABLE IF NOT EXISTS` only — legacy ALTER-migrations were deliberately removed; don't add migration shims.
