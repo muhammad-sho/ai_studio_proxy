@@ -162,4 +162,19 @@ test("retains historical usage when a Gemini key is deleted", async () => {
   const report = JSON.parse(usage.body);
   assert.equal(report.keys.find((key) => key.id === geminiId)?.total, 1);
   assert.match(report.keys.find((key) => key.id === geminiId)?.label || "", /^\(deleted #/);
+
+  const fullUsage = await request(adminPort, "/api/admin/usage?period=all", { headers: { cookie: adminCookie } });
+  const fullReport = JSON.parse(fullUsage.body);
+  for (const field of ["clients", "keys", "models", "matrix_client", "matrix_gemini", "failures_model"]) {
+    assert.ok(Array.isArray(fullReport[field]), "full usage response includes " + field);
+  }
+});
+
+test("keeps the manual model refresh route available", async () => {
+  const refresh = await request(adminPort, "/api/admin/models/refresh", {
+    method: "POST",
+    headers: { cookie: adminCookie, "x-csrf-token": csrfToken },
+  });
+  assert.equal(refresh.status, 502);
+  assert.equal(JSON.parse(refresh.body).status, 503);
 });
