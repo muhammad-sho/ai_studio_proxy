@@ -47,7 +47,7 @@ const {
   cookieSession: COOKIE_SESSION, cookieCsrf: COOKIE_CSRF, log, isOpenAiCompatibilityRoute,
 });
 const {
-  poolKeys, setMeta, getMeta, pacificDayStart, pacificMonthString, laDayStartUtcOfDaysAgo,
+  poolKeys, getMeta, pacificDayStart, pacificMonthString, laDayStartUtcOfDaysAgo,
   pacificMonthRange, usageStats, invalidateSecretMaskCache, maskSecrets, clipBody,
   upstreamErrorPayload, errorCodeFromPayload, recordLog, recordUsageRow, sweepDailyReset,
   setCooldownUntil, setCooldown, nextPacificReset,
