@@ -59,7 +59,7 @@ const { handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticM
   recordUsageRow, setCooldown, setCooldownUntil, nextPacificReset,
 });
 const { handleRequest } = createRequestHandler({
-  crypto, db, prep, log, dbg, json, securityHeaders, readBody, MAX_BODY_BYTES, SESSION_TTL_MS,
+  crypto, db, prep, log, dbg, maskKey, json, securityHeaders, readBody, MAX_BODY_BYTES, SESSION_TTL_MS,
   parseApiRoute, parseUploadRoute,
   dashboardSessionValid, csrfValid, localKeyIsValid, clientAddress, rateLimited,
   passwordDigest, passwordValid, recordLoginFailure, clearLoginFailures, hasAdmin, createSession, destroySession,
