@@ -357,8 +357,7 @@
     if (updateHash && window.location.hash !== '#' + name) {
       history.replaceState(null, '', '#' + name);
     }
-    if (name === 'request-logs') loadLogs();
-    if (name === 'statistics') loadUsage();
+    void load();
   }
 
   function initActiveTab() {
@@ -374,24 +373,28 @@
   });
 
   async function load() {
+    const active = document.querySelector('.panel.active')?.id.replace('panel-', '') || 'overview';
+    if (active === 'request-logs') return loadLogs(false);
+    if (active === 'statistics') return loadUsage();
     try {
       const data = await api('/api/admin/state');
       window.__lastState = data;
       render(data);
-      await loadPageUsage();
+      if (active === 'gemini-keys' || active === 'client-keys') await loadPageUsage(active);
     } catch (e) { console.error(e); }
-    if (document.getElementById('panel-request-logs')?.classList.contains('active')) loadLogs(false);
-    if (document.getElementById('panel-statistics')?.classList.contains('active')) loadUsage();
   }
 
   let pageUsage = null;
-  async function loadPageUsage() {
+  async function loadPageUsage(panel) {
+    const active = panel || document.querySelector('.panel.active')?.id.replace('panel-', '') || 'gemini-keys';
+    const isClient = active === 'client-keys';
+    const query = usageQuery(
+      isClient ? 'clientPeriod' : 'geminiPeriod',
+      isClient ? 'clientMonth' : 'geminiMonth'
+    );
     try {
-      const [geminiUsage, clientUsage] = await Promise.all([
-        api('/api/admin/usage' + usageQuery('geminiPeriod', 'geminiMonth')),
-        api('/api/admin/usage' + usageQuery('clientPeriod', 'clientMonth'))
-      ]);
-      pageUsage = { ...geminiUsage, clients: clientUsage.clients, matrix_client: clientUsage.matrix_client };
+      const usage = await api('/api/admin/usage' + query + '&view=' + (isClient ? 'clients' : 'gemini'));
+      pageUsage = { ...(pageUsage || {}), ...usage };
       renderPageUsage();
     } catch (e) { console.error(e); }
   }
@@ -470,7 +473,7 @@
 
   async function loadUsage() {
     try {
-      const d = await api('/api/admin/usage' + usageQuery('statsPeriod', 'statsMonth'));
+      const d = await api('/api/admin/usage' + usageQuery('statsPeriod', 'statsMonth') + '&view=statistics');
       document.getElementById('usageMeta').textContent = d.period;
       const failsByModel = {};
       for (const f of d.failures_model || []) (failsByModel[f.model] ||= []).push(f);
@@ -635,7 +638,6 @@
   };
 
     initActiveTab();
-    load();
     const POLL_MS = 5000;
     setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
