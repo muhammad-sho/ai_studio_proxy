@@ -22,7 +22,7 @@ curl -fsSLO https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/
 cp .env.example .env
 ```
 
-Commented settings in `.env.example` leave the app defaults unchanged. Compose ports are fixed at `9009` (dashboard) and `9008` (API).
+Commented settings in `.env.example` leave the app defaults unchanged. Compose ports are fixed at `9009` (dashboard) and `9008` (API). Usage history is retained forever by default; set `USAGE_RETENTION_DAYS` only when bounded history is desired.
 
 ## Production settings
 
