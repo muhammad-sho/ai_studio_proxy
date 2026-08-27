@@ -6,7 +6,7 @@ const zlib = require("node:zlib");
 const { DatabaseSync } = require("node:sqlite");
 const { loadConfig } = require("./lib/config");
 const { createHttpHelpers } = require("./lib/http");
-const { requestPath, parseApiRoute, parseUploadRoute, routeFamily, statsModelName } = require("./lib/routing");
+const { requestPath, parseApiRoute, parseUploadRoute, routeFamily, statsModelName, isOpenAiCompatibilityRoute } = require("./lib/routing");
 const { createDashboardAssets } = require("./lib/dashboard-assets");
 const { createDatabase } = require("./lib/database");
 const { createAuth } = require("./lib/auth");
@@ -43,7 +43,7 @@ const {
   createSession, destroySession, pruneExpiredSessions,
 } = createAuth({
   prep, crypto, trustProxy: TRUST_PROXY, sessionTtlMs: SESSION_TTL_MS,
-  cookieSession: COOKIE_SESSION, cookieCsrf: COOKIE_CSRF, log,
+  cookieSession: COOKIE_SESSION, cookieCsrf: COOKIE_CSRF, log, isOpenAiCompatibilityRoute,
 });
 const {
   poolKeys, setMeta, getMeta, pacificDayStart, pacificMonthString, laDayStartUtcOfDaysAgo,
@@ -56,7 +56,7 @@ const { handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticM
   REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, MODELS_CACHE_TTL_MS,
   poolKeys, setMeta, getMeta, pacificDayStart, resolveClientKey, clientAddress,
   maskSecrets, clipBody, upstreamErrorPayload, errorCodeFromPayload, recordLog,
-  recordUsageRow, setCooldown, setCooldownUntil, nextPacificReset,
+  recordUsageRow, setCooldown, setCooldownUntil, nextPacificReset, isOpenAiCompatibilityRoute,
 });
 const { handleRequest } = createRequestHandler({
   crypto, db, prep, log, dbg, maskKey, json, securityHeaders, readBody, MAX_BODY_BYTES, SESSION_TTL_MS,

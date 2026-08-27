@@ -92,6 +92,19 @@ Only the URL and the key value change — the request format stays identical to 
 
 Your application uses **one endpoint and one client key**, while the proxy routes requests across your Gemini API keys.
 
+### OpenAI SDK compatibility
+
+Use the OpenAI SDK with the same proxy client key and this base URL:
+
+```js
+const client = new OpenAI({
+  apiKey: "YOUR_CLIENT_KEY",
+  baseURL: "http://YOUR_SERVER_IP:9008/v1beta/openai/",
+});
+```
+
+OpenAI-compatible HTTP requests use `Authorization: Bearer YOUR_CLIENT_KEY`. The proxy replaces it with the selected Gemini key in the same format, while preserving the request path, method, query, and body. Gemini Live WebSocket connections are intentionally not proxied.
+
 ---
 
 ## Key Selection

@@ -58,6 +58,7 @@ function proxyFor(status, headers, body, observed = {}) {
     setCooldown: () => {},
     setCooldownUntil: () => {},
     nextPacificReset: () => 0,
+    isOpenAiCompatibilityRoute: (pathname) => /^\/v1beta\/openai(?:\/|$)/.test(pathname),
   });
 }
 
@@ -74,6 +75,7 @@ test("relays successful Gemini responses immediately when streaming is requested
   assert.equal(result.stream, true);
   assert.equal(result.status, 200);
   assert.equal(observed.options.headers["x-goog-api-key"], "gemini-key");
+  assert.equal(observed.options.headers.authorization, undefined);
   assert.equal(observed.options.headers["content-length"], 2);
 
   const chunks = [];
@@ -107,4 +109,20 @@ test("keeps Gemini error responses buffered for existing error classification", 
   assert.equal(result.stream, undefined);
   assert.equal(result.status, 429);
   assert.equal(result.body.toString(), '{"error":{"status":"RESOURCE_EXHAUSTED"}}');
+});
+
+
+test("uses Bearer authentication for OpenAI-compatible upstream routes", async () => {
+  const observed = {};
+  const proxy = proxyFor(200, { "content-type": "application/json", "content-length": "11" }, '{"ok":true}', observed);
+  const result = await proxy.forwardToGemini(
+    { url: "/v1beta/openai/chat/completions", method: "POST", headers: { authorization: "Bearer proxy-client-key", host: "proxy" } },
+    Buffer.from("{}"),
+    "gemini-key",
+    { stream: true }
+  );
+
+  assert.equal(result.stream, true);
+  assert.equal(observed.options.headers.authorization, "Bearer gemini-key");
+  assert.equal(observed.options.headers["x-goog-api-key"], undefined);
 });

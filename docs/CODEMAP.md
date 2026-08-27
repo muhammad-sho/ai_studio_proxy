@@ -10,8 +10,8 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | Environment defaults and limits | `lib/config.js` | Adding or validating an environment setting |
 | SQLite schema, startup, statement cache | `lib/database.js` | Changing storage setup or fixed SQL ownership |
 | HTTP primitives and security headers | `lib/http.js` | Changing JSON responses, headers, body limits, or static HTTP behavior |
-| Dashboard login, cookies, CSRF, rate limits | `lib/auth.js` | Changing dashboard authentication |
-| Route families and Gemini path parsing | `lib/routing.js` | Changing which port owns a path |
+| Dashboard login, cookies, CSRF, client-key formats, rate limits | `lib/auth.js` | Changing dashboard or proxy authentication |
+| Route families and Gemini/OpenAI path parsing | `lib/routing.js` | Changing which port owns a path or credential format |
 | Dashboard/admin API endpoints | `lib/admin-routes.js` | Changing setup, keys, logs, statistics, or dashboard APIs |
 | Usage, key ordering, cooldowns, retention | `lib/usage.js` | Changing quota accounting or key selection |
 | Gemini forwarding, uploads, streams, models | `lib/gemini-proxy.js` | Changing upstream pass-through behavior or latency |
@@ -28,7 +28,7 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | `lib/database.js` | `createDatabase()` | SQLite instance, schema, prepared-statement cache |
 | `lib/http.js` | `createHttpHelpers()` | JSON output, security headers, bounded body reads |
 | `lib/auth.js` | `createAuth()` | Sessions, CSRF, client-key lookup, login throttling |
-| `lib/routing.js` | route parsing exports | Path parsing, port-family gate, usage model naming |
+| `lib/routing.js` | route parsing exports | Path parsing, port-family gate, OpenAI route classification, usage model naming |
 | `lib/dashboard-assets.js` | `createDashboardAssets()` | Authenticated dashboard assets, gzip, ETags, and private revalidation |
 | `lib/usage.js` | `createUsage()` | Pacific periods, selection statistics, cooldowns, retention, masking |
 | `lib/gemini-proxy.js` | `createGeminiProxy()` | Upstream forwarding, successful-response streaming, uploads, and model refresh |
@@ -42,7 +42,7 @@ Dashboard modules follow the same boundary: `dashboard/dashboard.js` owns shell,
 
 - Admin routes stay on `ADMIN_PORT`; Gemini-compatible API and upload routes stay on `API_PORT`; `/health` stays on both.
 - Published environment variables, cookie names, local-storage names, API paths, methods, and response properties stay stable.
-- Every proxy request uses exactly one selected Gemini key. Do not add retries, fallback attempts, or request/response rewriting.
+- Every HTTP proxy request uses exactly one selected Gemini key. Native Gemini routes use `x-goog-api-key`; OpenAI-compatible routes use Bearer authentication. Do not add retries, fallback attempts, or request/response rewriting.
 - Usage stays permanently retained, including after keys are deleted. Request logs remain separately retained under their existing policy.
 - Dashboard assets and admin endpoints require a valid dashboard session. State-changing admin requests also require CSRF validation.
 
