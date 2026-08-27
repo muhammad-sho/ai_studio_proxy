@@ -94,6 +94,8 @@ curl http://YOUR_SERVER_IP:9008/v1beta/models/gemini-2.5-flash:generateContent \
 
 Only the URL and the key value change — the request format stays identical to Google's.
 
+Model discovery requests (`GET /v1/models`, `/v1beta/models`, or `/v1alpha/models`) are forwarded live to Google, so the list is current when your client asks for it. They are not cached, load-balanced, or counted as model inference usage.
+
 Your application uses **one endpoint and one client key**, while the proxy routes requests across your Gemini API keys.
 
 ### OpenAI SDK compatibility
