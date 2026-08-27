@@ -319,16 +319,22 @@
     if (hash) showPanel(hash, null, false);
   });
 
+  let stateLoadInFlight = null;
   async function load() {
     const active = activePanel;
     if (active === 'request-logs') return window.loadLogs(false);
     if (active === 'statistics') return window.loadUsage();
-    try {
-      const data = await api('/api/admin/state');
-      window.__lastState = data;
-      render(data);
-      if (active === 'gemini-keys' || active === 'client-keys') await loadPageUsage(active);
-    } catch (e) { console.error(e); }
+    if (stateLoadInFlight) return stateLoadInFlight;
+    stateLoadInFlight = (async () => {
+      try {
+        const data = await api('/api/admin/state');
+        window.__lastState = data;
+        render(data);
+        if (active === 'gemini-keys' || active === 'client-keys') await loadPageUsage(active);
+      } catch (e) { console.error(e); }
+      finally { stateLoadInFlight = null; }
+    })();
+    return stateLoadInFlight;
   }
 
   let pageUsage = null;
@@ -586,7 +592,12 @@
   (async () => {
     initActiveTab();
     const POLL_MS = 5000;
-    setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+    const POLLED_PANELS = new Set(['overview', 'gemini-keys', 'client-keys']);
+    setInterval(() => {
+      if (!document.hidden && POLLED_PANELS.has(activePanel)) void load();
+    }, POLL_MS);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && POLLED_PANELS.has(activePanel)) void load();
+    });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && window.closeLogModal) window.closeLogModal(); });
   })();
