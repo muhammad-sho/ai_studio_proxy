@@ -1,8 +1,8 @@
 <div class="section-box">
       <h2 class="section-title">Request Logs</h2>
-      <p class="section-desc">Every generateContent request with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
+      <p class="section-desc">Every proxied request with its outcome. Click a row to inspect the request timeline and captured payloads — API keys are masked.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-        <select id="logModel" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All models</option></select>
+        <select id="logModel" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All endpoints and models</option></select>
         <select id="logResult" class="form-input" style="width:auto" onchange="loadLogs()">
           <option value="">All results</option>
           <option value="success">Success</option>
