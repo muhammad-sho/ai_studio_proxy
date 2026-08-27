@@ -59,7 +59,7 @@ function proxyFor(status, headers, body, observed = {}, options = {}) {
     setCooldown: () => {},
     setCooldownUntil: () => {},
     nextPacificReset: () => 0,
-    isOpenAiCompatibilityRoute: (pathname) => /^\/v1beta\/openai(?:\/|$)/.test(pathname),
+    isOpenAiCompatibilityRoute: options.isOpenAiCompatibilityRoute || isOpenAiCompatibilityRoute,
   });
 }
 
