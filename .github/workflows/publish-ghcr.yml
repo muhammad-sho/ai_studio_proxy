@@ -72,6 +72,10 @@ jobs:
           docker compose -p "$project" up -d
           wait_for_health http://127.0.0.1:9009/health
           wait_for_health http://127.0.0.1:9008/health
+          curl --fail --silent --show-error -X POST http://127.0.0.1:9009/api/setup \
+            -H 'content-type: application/json' \
+            -d '{"username":"compose-test","password":"testpass123","passwordConfirmation":"testpass123"}' >/dev/null
+          curl --fail --silent --show-error http://127.0.0.1:9009/reset-password | grep -q "Get Recovery Code"
           test -f volumes/ai-studio-proxy.db
           if docker run --rm -e DB_PATH=/ai-studio-proxy.db ai-studio-proxy:ci >/dev/null 2>&1; then
             echo "unsafe DB_PATH unexpectedly started the container" >&2
