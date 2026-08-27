@@ -109,7 +109,7 @@ const client = new OpenAI({
 });
 ```
 
-OpenAI-compatible HTTP requests use `Authorization: Bearer YOUR_CLIENT_KEY`. The proxy replaces it with the selected Gemini key in the same format, while preserving the request path, method, query, and body. Gemini Live WebSocket connections are intentionally not proxied.
+OpenAI-compatible HTTP requests use `Authorization: Bearer YOUR_CLIENT_KEY`. The proxy replaces it with the selected Gemini key in the same format, while preserving the method, query, and body. Explicit `/v*/openai/` routes keep their path; standard `/v1/...` aliases are mapped to Google's compatibility path. Gemini Live WebSocket connections are intentionally not proxied.
 
 For clients that build the standard OpenAI paths directly under `/v1/`, the proxy also accepts `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations`, supported audio/file/batch paths, and Bearer-authenticated `/v1/models`. These aliases are mapped to Google's `/v1beta/openai/` routes. Native Gemini requests using `x-goog-api-key` keep their original paths.
 
