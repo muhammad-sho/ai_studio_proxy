@@ -6,6 +6,7 @@ const zlib = require("node:zlib");
 const { DatabaseSync } = require("node:sqlite");
 const { loadConfig } = require("./lib/config");
 const { createHttpHelpers } = require("./lib/http");
+const { requestPath, parseApiRoute, parseUploadRoute, routeFamily, statsModelName } = require("./lib/routing");
 
 const {
   ADMIN_PORT, API_PORT, DB_PATH, REQUEST_TIMEOUT_MS, MAX_BODY_BYTES, MAX_RESPONSE_BYTES,
@@ -168,18 +169,6 @@ function clientAddress(request) {
   return request.socket.remoteAddress || "unknown";
 }
 
-function requestPath(request) {
-  try { return new URL(request.url, "http://localhost").pathname; } catch { return request.url.split("?")[0]; }
-}
-
-function routeFamily(pathname) {
-  if (pathname === "/health") return "both";
-  if (pathname === "/" || pathname === "/api/setup" || pathname === "/login" || pathname === "/logout" || pathname === "/dashboard.css" || pathname === "/dashboard.js" || pathname.startsWith("/panels/") || pathname.startsWith("/api/admin")) return "admin";
-  const apiRoute = parseApiRoute(pathname);
-  const uploadRoute = parseUploadRoute(pathname);
-  if (apiRoute || uploadRoute) return "api";
-  return null;
-}
 
 function pruneLoginAttempts() {
   const cutoff = Date.now() - 15 * 60 * 1000;
@@ -253,24 +242,7 @@ function createClientKey(label) {
   return value;
 }
 
-const PASS_THROUGH_ACTIONS = new Set(["generateContent", "streamGenerateContent", "countTokens", "embedContent", "batchEmbedContents", "asyncBatchEmbedContent", "predict", "predictLongRunning"]);
 const HOP_BY_HOP_HEADERS = new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "proxy-authorization", "proxy-authenticate", "te", "trailer"]);
-
-function parseApiRoute(pathname) {
-  const match = pathname.match(/^\/(?:v1alpha|v1beta|v1)(\/.*)$/);
-  if (!match) return null;
-  let rest;
-  try { rest = decodeURIComponent(match[1]); } catch { return null; }
-  const modelAction = rest.match(/^\/models\/([^/:]+):([A-Za-z]+)$/);
-  if (modelAction) return { model: modelAction[1], action: modelAction[2] };
-  return { model: null, action: null, subpath: rest };
-}
-
-function parseUploadRoute(pathname) {
-  const match = pathname.match(/^\/upload\/(v1alpha|v1beta|v1)(\/.*)$/);
-  if (!match) return null;
-  return { version: match[1], subpath: match[2] };
-}
 
 function filterResponseHeaders(upstreamHeaders) {
   const headers = {};
@@ -290,11 +262,6 @@ function rewriteUploadUrl(uploadUrl, request) {
     u.protocol = proto + ":";
     return u.toString();
   } catch { return uploadUrl; }
-}
-
-function statsModelName(model, action, fallbackPath) {
-  if (!model) return fallbackPath || "api";
-  return PASS_THROUGH_ACTIONS.has(action || "") ? model : `${model}:${action}`;
 }
 
 function poolKeys() {
