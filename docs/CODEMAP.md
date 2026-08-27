@@ -19,6 +19,23 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | Dashboard UI | `dashboard/` | Changing presentation or a dashboard interaction |
 | Compatibility tests | `test/` | Adding a guard for a behavior change |
 
+## Module exports
+
+| File | Entry point | Owns |
+|---|---|---|
+| `server.js` | application bootstrap | Dependency assembly, listeners, shutdown, hourly sweep |
+| `lib/config.js` | `loadConfig()` | Environment defaults and limits |
+| `lib/database.js` | `createDatabase()` | SQLite instance, schema, prepared-statement cache |
+| `lib/http.js` | `createHttpHelpers()` | JSON output, security headers, bounded body reads |
+| `lib/auth.js` | `createAuth()` | Sessions, CSRF, client-key lookup, login throttling |
+| `lib/routing.js` | route parsing exports | Path parsing, port-family gate, usage model naming |
+| `lib/dashboard-assets.js` | `createDashboardAssets()` | Setup/sign-in pages and compressed dashboard assets |
+| `lib/usage.js` | `createUsage()` | Pacific periods, selection statistics, cooldowns, retention, masking |
+| `lib/gemini-proxy.js` | `createGeminiProxy()` | Upstream forwarding, uploads, SSE, model refresh |
+| `lib/admin-routes.js` | `createRequestHandler()` | Setup, login, dashboard APIs, key CRUD, route dispatch |
+
+Every module is initialized once by `server.js`. Modules receive dependencies as arguments; they must not import the bootstrap file or reach into another module's private state.
+
 ## Public compatibility contract
 
 - Admin routes stay on `ADMIN_PORT`; Gemini-compatible API and upload routes stay on `API_PORT`; `/health` stays on both.
