@@ -9,7 +9,7 @@
 
 - Zero-dependency Node.js (22+): `server.js` is the bootstrap only. Backend ownership is split under `lib/` for configuration, SQLite, HTTP, authentication, routing, dashboard assets, usage, Gemini forwarding, and request handlers; see `docs/CODEMAP.md`.
 - The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` owns navigation and shared UI; each tab has a `panels/<name>.html` partial and may have a sibling lazy controller. Only the active tab is fetched initially; visited tabs are kept in browser memory. Assets are authenticated, cached in-process, and privately revalidated with ETags. `setup.html` and `signin.html` are the two minimal auth pages, also lazy-read.
-- No `package.json`, external test framework, linter, or runtime dependencies. The built-in `node:test` suite in `test/` is required for behavior changes.
+- No `package.json`, external test framework, linter, or runtime dependencies. The built-in `node:test` suite in `test/` is required for behavior changes. Invalid numeric environment values must fall back to safe defaults rather than disabling a limit.
 
 ## Verification
 

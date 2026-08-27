@@ -7,9 +7,9 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | Area | Owner | Change it when |
 |---|---|---|
 | Process startup, port binding, shutdown | `server.js` | Changing how the application starts or stops |
-| Environment defaults and limits | `lib/config.js` | Adding or validating an environment setting |
+| Environment defaults, limits, and safe parsing | `lib/config.js` | Adding or validating an environment setting |
 | SQLite schema, startup, statement cache | `lib/database.js` | Changing storage setup or fixed SQL ownership |
-| HTTP primitives and security headers | `lib/http.js` | Changing JSON responses, headers, body limits, or static HTTP behavior |
+| HTTP primitives and security headers | `lib/http.js` | Changing JSON responses, headers, body limits, aborted-body handling, or static HTTP behavior |
 | Dashboard login, cookies, CSRF, client-key formats, rate limits | `lib/auth.js` | Changing dashboard or proxy authentication |
 | Route families and Gemini/OpenAI path parsing | `lib/routing.js` | Changing which port owns a path or credential format |
 | Dashboard/admin API endpoints | `lib/admin-routes.js` | Changing setup, keys, logs, statistics, or dashboard APIs |
@@ -24,9 +24,9 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | File | Entry point | Owns |
 |---|---|---|
 | `server.js` | application bootstrap | Dependency assembly, listeners, shutdown, hourly sweep |
-| `lib/config.js` | `loadConfig()` | Environment defaults and limits |
+| `lib/config.js` | `loadConfig()` | Environment defaults, limits, and validated integer parsing |
 | `lib/database.js` | `createDatabase()` | SQLite instance, schema, prepared-statement cache |
-| `lib/http.js` | `createHttpHelpers()` | JSON output, security headers, bounded body reads |
+| `lib/http.js` | `createHttpHelpers()` | JSON output, security headers, bounded and abort-safe body reads |
 | `lib/auth.js` | `createAuth()` | Sessions, CSRF, client-key lookup, login throttling |
 | `lib/routing.js` | route parsing exports | Path parsing, port-family gate, OpenAI route classification, usage model naming |
 | `lib/dashboard-assets.js` | `createDashboardAssets()` | Authenticated dashboard assets, gzip, ETags, and private revalidation |

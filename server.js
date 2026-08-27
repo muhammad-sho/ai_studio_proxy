@@ -120,7 +120,10 @@ const setupPromise = (async () => {
   process.exit(1);
 });
 
+let shuttingDown = false;
 function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   log("info", "Shutdown", `${signal} received; closing server`);
   let remaining = servers.length;
   const finish = () => { try { db.close(); } catch {} process.exit(0); };
