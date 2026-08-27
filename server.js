@@ -16,7 +16,7 @@ const { createRequestHandler } = require("./lib/admin-routes");
 
 const {
   ADMIN_PORT, API_PORT, DB_PATH, REQUEST_TIMEOUT_MS, MAX_BODY_BYTES, MAX_RESPONSE_BYTES,
-  TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, REQUEST_LOG_RETENTION_MS, MODELS_CACHE_TTL_MS,
+  TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, MODELS_CACHE_TTL_MS,
   SESSION_TTL_MS, TRUST_PROXY, DEBUG, CORS_ORIGIN,
 } = loadConfig();
 const COOKIE_SESSION = "ai_studio_proxy_dashboard";
@@ -50,7 +50,7 @@ const {
   pacificMonthRange, usageStats, invalidateSecretMaskCache, maskSecrets, clipBody,
   upstreamErrorPayload, errorCodeFromPayload, recordLog, recordUsageRow, sweepDailyReset,
   setCooldownUntil, setCooldown, nextPacificReset,
-} = createUsage({ db, prep, log, maskKey, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, REQUEST_LOG_RETENTION_MS });
+} = createUsage({ db, prep, log, maskKey, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES });
 const { handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticModelsRequest } = createGeminiProxy({
   https, crypto, db, prep, log, dbg, maskKey, json, requestPath, statsModelName,
   REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, MODELS_CACHE_TTL_MS,
