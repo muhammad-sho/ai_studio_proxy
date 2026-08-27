@@ -6,7 +6,7 @@ services:
       - path: .env
         required: false
     ports:
-      - "${ADMIN_PORT:-9009}:${ADMIN_PORT:-9009}"
-      - "${API_PORT:-9008}:${API_PORT:-9008}"
+      - "9009:9009"
+      - "9008:9008"
     volumes:
       - ./volumes:/data

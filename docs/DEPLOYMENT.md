@@ -11,7 +11,7 @@ curl -fsSLO https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/
 docker compose up -d
 ```
 
-It stores the SQLite database in `./volumes` on the host.
+It stores the SQLite database in `./volumes` on the host and exposes the dashboard on port `9009` and API on port `9008`.
 
 ## Optional tuning
 
@@ -22,7 +22,7 @@ curl -fsSLO https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/
 cp .env.example .env
 ```
 
-Commented settings in `.env.example` leave the app defaults unchanged. Both port variables must be changed together with their published host ports, which the Compose file does automatically.
+Commented settings in `.env.example` leave the app defaults unchanged. Compose ports are fixed at `9009` (dashboard) and `9008` (API).
 
 ## Production settings
 
