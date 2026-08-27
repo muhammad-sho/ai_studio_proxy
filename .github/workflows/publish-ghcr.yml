@@ -44,18 +44,17 @@ jobs:
 
       - name: Verify Compose deployment
         run: |
-          export AI_STUDIO_PROXY_IMAGE=ai-studio-proxy:ci
-          export ADMIN_PORT=19109
-          export API_PORT=19108
-          export DATA_DIR="$PWD/ci-data"
+          docker tag ai-studio-proxy:ci ghcr.io/muhammad-sho/ai-studio-proxy:latest
           project=ai-studio-proxy-ci
-          mkdir -p "$DATA_DIR"
+          mkdir -p volumes
+          printf 'ADMIN_PORT=19109\nAPI_PORT=19108\n' > .env
           cleanup() {
             status=$?
             if [ "$status" -ne 0 ]; then
               docker compose -p "$project" logs || true
             fi
             docker compose -p "$project" down --volumes --remove-orphans || true
+            rm -f .env
             trap - EXIT
             exit "$status"
           }
@@ -73,9 +72,9 @@ jobs:
           }
           docker compose -p "$project" config --quiet
           docker compose -p "$project" up -d
-          wait_for_health http://127.0.0.1:$ADMIN_PORT/health
-          wait_for_health http://127.0.0.1:$API_PORT/health
-          test -f "$DATA_DIR/ai-studio-proxy.db"
+          wait_for_health http://127.0.0.1:19109/health
+          wait_for_health http://127.0.0.1:19108/health
+          test -f volumes/ai-studio-proxy.db
           if docker run --rm -e DB_PATH=/ai-studio-proxy.db ai-studio-proxy:ci >/dev/null 2>&1; then
             echo "unsafe DB_PATH unexpectedly started the container" >&2
             exit 1

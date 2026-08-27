@@ -1,26 +1,36 @@
 # Deployment guide
 
+Docker Compose 2.24 or newer is required for the optional `.env` file support.
+
 ## Start the service
 
-Use Docker Compose with the published image:
+The Compose file works with no configuration:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/docker-compose.yml
-curl -fsSLO https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/.env.example
-cp .env.example .env
-docker compose config --quiet
 docker compose up -d
 ```
 
-The default data directory is `./data`. It contains the SQLite database and must be backed up before changing hosts.
+It stores the SQLite database in `./volumes` on the host.
+
+## Optional tuning
+
+Only create `.env` when a default needs changing:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/.env.example
+cp .env.example .env
+```
+
+Commented settings in `.env.example` leave the app defaults unchanged. Both port variables must be changed together with their published host ports, which the Compose file does automatically.
 
 ## Production settings
 
 - Set `CORS_ORIGIN` to the exact browser origin when browser clients call the proxy directly.
 - Set `TRUST_PROXY=1` only when a trusted reverse proxy overwrites forwarded client-address headers.
-- Terminate TLS at a reverse proxy. Keep the proxy container on its two default ports unless you intentionally change both `ADMIN_PORT` and `API_PORT`.
-- Do not put `DB_PATH` at the container root. It must be an absolute file path inside a writable mounted directory; the default is `/data/ai-studio-proxy.db`.
-- Docker logs are capped at 10 MiB per file with three retained files. Use your platform logging driver if central log collection is required.
+- Terminate TLS at a reverse proxy.
+- Keep `DB_PATH` as an absolute file path inside the mounted `/data` directory; the default is `/data/ai-studio-proxy.db`.
+- On SELinux hosts, append `:Z` to the `./volumes:/data` mount in `docker-compose.yml`.
 
 ## Verify and operate
 
@@ -42,10 +52,10 @@ docker compose up -d
 
 ## Backup
 
-Stop the service before copying the bind-mounted `./data` directory so the SQLite database and WAL sidecars remain consistent:
+Stop the service before copying the bind-mounted `./volumes` directory so the SQLite database and WAL sidecars remain consistent:
 
 ```bash
 docker compose stop
-tar -czf ai-studio-proxy-data-backup.tgz data
+tar -czf ai-studio-proxy-volumes-backup.tgz volumes
 docker compose start
 ```

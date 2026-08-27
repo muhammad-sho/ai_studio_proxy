@@ -59,7 +59,7 @@ The app is past initial testing and running for real users. Every change must be
 
 - Never delete, overwrite, or corrupt existing application data.
 - Preserve environment-variable names, defaults, cookie/localStorage names, API routes, and response shapes; breaking renames require explicit owner approval.
-- Before pushing storage or startup changes, validate a clean Compose boot with a new data directory and both health endpoints.
+- Before pushing storage or startup changes, validate a clean Compose boot with a new `./volumes` directory and both health endpoints.
 - If a change could discard or corrupt data, stop and ask the owner first.
 
 ## Naming & docs conventions
