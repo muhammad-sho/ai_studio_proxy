@@ -82,30 +82,6 @@
     setText('ov-m', models.length);
     setText('ov-r', totalReq);
 
-    const rst = data.resetTimezone
-      ? `Midnight Pacific (${data.resetTimezone}) · Began ${new Date(data.resetAt).toLocaleTimeString()}`
-      : '';
-    const mc = data.modelsCheckedAt
-      ? `${new Date(Number(data.modelsCheckedAt)).toLocaleString()}`
-      : 'Not checked yet';
-
-    setText('ov-reset', rst);
-    setText('ov-mc', mc);
-    const cacheAge = data.modelsCheckedAt ? Date.now() - Number(data.modelsCheckedAt) : null;
-    const statusEl = document.getElementById('cacheStatus');
-    if (statusEl) {
-      if (!data.modelsCheckedAt) {
-        statusEl.textContent = ' (no cache)';
-        statusEl.style.color = 'var(--rose)';
-      } else if (cacheAge < 24 * 3600e3) {
-        statusEl.textContent = ` (fresh, ${Math.round(cacheAge/60e3)}m ago)`;
-        statusEl.style.color = 'var(--emerald)';
-      } else {
-        statusEl.textContent = ` (stale, ${Math.round(cacheAge/3600e3)}h ago)`;
-        statusEl.style.color = 'var(--amber)';
-      }
-    }
-
     const ck = data.clientKeys || [];
     const clientKeysTbody = document.getElementById('clientKeysTbody');
     if (clientKeysTbody) clientKeysTbody.innerHTML = ck.length
@@ -435,25 +411,6 @@
         return `<tr><td><strong>${esc(m.model)}</strong></td><td>${m.total}</td><td>${m.success}</td><td>${m.failed}</td><td>${reasons}</td></tr>`;
       }).join('') : '<tr><td colspan="5" class="empty-notice">No requests recorded in this period.</td></tr>';
     } catch (err) { console.error(err); }
-  }
-
-  async function refreshModels() {
-    const btn = document.getElementById('refreshModelsBtn');
-    const statusEl = document.getElementById('cacheStatus');
-    btn.disabled = true;
-    btn.textContent = 'Refreshing...';
-    statusEl.textContent = ' (refreshing...)';
-    statusEl.style.color = 'var(--amber)';
-    try {
-      await api('/api/admin/models/refresh', { method: 'POST' });
-      load();
-    } catch (err) {
-      alert(err.message);
-      statusEl.textContent = ' (error)';
-      statusEl.style.color = 'var(--rose)';
-    }
-    btn.disabled = false;
-    btn.textContent = 'Refresh';
   }
 
   async function doDeleteKey(type, id) {
