@@ -25,9 +25,33 @@ jobs:
       - name: Verify application
         run: |
           node --check server.js
+          find lib -type f -name '*.js' -print0 | xargs -0 -r -n 1 node --check
           node --check dashboard/dashboard.js
           node --test
           sh -n entrypoint.sh
+
+      - name: Build container for smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ai-studio-proxy:ci
+
+      - name: Verify container startup
+        run: |
+          mkdir -p ci-data
+          docker run -d --rm --name ai-studio-proxy-ci \
+            -p 19009:9009 -p 19008:9008 \
+            -v "$PWD/ci-data:/data" \
+            ai-studio-proxy:ci
+          cleanup() {
+            docker logs ai-studio-proxy-ci
+            docker stop ai-studio-proxy-ci || true
+          }
+          trap cleanup EXIT
+          curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 http://127.0.0.1:19009/health
+          curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 http://127.0.0.1:19008/health
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
