@@ -4,6 +4,7 @@ WORKDIR /app
 RUN apk add --no-cache su-exec \
     && mkdir -p /data
 COPY server.js ./server.js
+COPY lib/ ./lib/
 COPY dashboard/ ./dashboard/
 COPY setup.html ./setup.html
 COPY signin.html ./signin.html
