@@ -21,10 +21,12 @@ function authFor(clientKey) {
 test("accepts a proxy client key from OpenAI Bearer authentication only on OpenAI routes", () => {
   const auth = authFor("proxy-client-key");
 
-  assert.deepEqual(
-    auth.resolveClientKey({ url: "/v1beta/openai/chat/completions", headers: { authorization: "Bearer proxy-client-key" } }),
-    { id: 7, label: "OpenAI client" }
-  );
+  for (const url of ["/v1beta/openai/chat/completions", "/v1/chat/completions", "/v1/models"]) {
+    assert.deepEqual(
+      auth.resolveClientKey({ url, headers: { authorization: "Bearer proxy-client-key" } }),
+      { id: 7, label: "OpenAI client" }
+    );
+  }
   assert.equal(
     auth.resolveClientKey({ url: "/v1beta/models/gemini-3.7-flash:generateContent", headers: { authorization: "Bearer proxy-client-key" } }),
     null
