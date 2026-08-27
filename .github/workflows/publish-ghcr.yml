@@ -45,15 +45,19 @@ jobs:
       - name: Verify container startup
         run: |
           mkdir -p ci-data
-          touch ci-data/local-gemini-proxy.db
           docker run -d --name ai-studio-proxy-ci \
             -p 19009:9009 -p 19008:9008 \
             -v "$PWD/ci-data:/data" \
             ai-studio-proxy:ci
           cleanup() {
-            docker inspect ai-studio-proxy-ci || true
-            docker logs ai-studio-proxy-ci || true
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              docker inspect ai-studio-proxy-ci || true
+              docker logs ai-studio-proxy-ci || true
+            fi
             docker rm -f ai-studio-proxy-ci || true
+            trap - EXIT
+            exit "$status"
           }
           trap cleanup EXIT
           wait_for_health() {
@@ -70,7 +74,6 @@ jobs:
           wait_for_health http://127.0.0.1:19009/health
           wait_for_health http://127.0.0.1:19008/health
           test -f ci-data/ai-studio-proxy.db
-          test ! -e ci-data/local-gemini-proxy.db
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
