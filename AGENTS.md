@@ -7,11 +7,11 @@
 
 ## Stack
 
-- Zero-dependency Node.js (22+): `server.js` (~1000 lines) is the entire backend — HTTP server, SQLite via built-in `node:sqlite`, upstream forwarding, and the dashboard/setup/sign-in UI.
-- The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` fetches `/panels/<name>.html` partials (one per tab) and injects them. All assets are lazy-read from disk and cached on first request (`loadDashboardAsset()`), served only on the admin port. `setup.html` and `signin.html` are the two minimal auth pages, also lazy-read (`staticPage()`).
-- No `package.json`, no test framework, no linter. Don't add dependencies or tooling without being asked.
+- Zero-dependency Node.js (22+): `server.js` is the bootstrap only. Backend ownership is split under `lib/` for configuration, SQLite, HTTP, authentication, routing, dashboard assets, usage, Gemini forwarding, and request handlers; see `docs/CODEMAP.md`.
+- The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` fetches `/panels/<name>.html` partials (one per tab) and injects them. All assets are lazy-read from disk and cached on first request, served only on the admin port. `setup.html` and `signin.html` are the two minimal auth pages, also lazy-read.
+- No `package.json`, external test framework, linter, or runtime dependencies. The built-in `node:test` suite in `test/` is required for behavior changes.
 
-## Verification (no test suite exists)
+## Verification
 
 ```bash
 node --check server.js
