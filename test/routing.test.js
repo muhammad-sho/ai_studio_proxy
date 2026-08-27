@@ -45,7 +45,9 @@ test("uses request-body model for OpenAI inference routes", () => {
 test("does not treat malformed or missing model bodies as a real model", () => {
   assert.equal(requestModelFromBody(Buffer.from("{bad")), null);
   const route = classifyRoute("/v1beta/openai/chat/completions", "POST", null, null, Buffer.from("{}"));
-  assert.equal(route.statsModel, null);\n  assert.equal(route.logModel, "[unidentified inference]");\n  assert.equal(route.trackUsage, false);
+  assert.equal(route.statsModel, null);
+  assert.equal(route.logModel, "[unidentified inference]");
+  assert.equal(route.trackUsage, false);
 });
 
 
