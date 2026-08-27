@@ -26,7 +26,7 @@ jobs:
         run: |
           node --check server.js
           find lib -type f -name '*.js' -print0 | xargs -0 -r -n 1 node --check
-          node --check dashboard/dashboard.js
+          find dashboard -type f -name '*.js' -print0 | xargs -0 -r -n 1 node --check
           node --test
           sh -n entrypoint.sh
 
