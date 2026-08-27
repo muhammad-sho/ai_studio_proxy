@@ -9,15 +9,13 @@ const { createHttpHelpers } = require("./lib/http");
 const { requestPath, parseApiRoute, parseUploadRoute, routeFamily, statsModelName } = require("./lib/routing");
 const { createDashboardAssets } = require("./lib/dashboard-assets");
 const { createDatabase } = require("./lib/database");
+const { createAuth } = require("./lib/auth");
 
 const {
   ADMIN_PORT, API_PORT, DB_PATH, REQUEST_TIMEOUT_MS, MAX_BODY_BYTES, MAX_RESPONSE_BYTES,
   TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, MODELS_CACHE_TTL_MS,
   SESSION_TTL_MS, TRUST_PROXY, DEBUG, CORS_ORIGIN,
 } = loadConfig();
-const sessions = new Map();
-const loginAttempts = new Map();
-const loginFailures = [];
 const COOKIE_SESSION = "ai_studio_proxy_dashboard";
 const COOKIE_CSRF = "ai_studio_proxy_csrf";
 
@@ -36,92 +34,14 @@ const { json, securityHeaders, readBody } = createHttpHelpers({
   maxBodyBytes: MAX_BODY_BYTES,
 });
 const { staticPage, sendDashboard, serveDashboardAsset } = createDashboardAssets({ fs, zlib, json });
-
-function hashValue(value) {
-  return crypto.createHash("sha256").update(value).digest("hex");
-}
-
-function constantTimeEqual(left, right) {
-  return crypto.timingSafeEqual(Buffer.from(hashValue(String(left)), "hex"), Buffer.from(hashValue(String(right)), "hex"));
-}
-
-function cookieValue(request, name) {
-  return (request.headers.cookie || "").match(new RegExp(`(?:^|; )${name}=([^;]+)`))?.[1] || null;
-}
-
-function sessionFromRequest(request) {
-  const token = cookieValue(request, COOKIE_SESSION);
-  const session = token ? sessions.get(token) : null;
-  if (!session) return null;
-  if (session.expiresAt <= Date.now()) { sessions.delete(token); return null; }
-  return session;
-}
-
-function dashboardSessionValid(request) {
-  return Boolean(sessionFromRequest(request));
-}
-
-function csrfValid(request) {
-  const session = sessionFromRequest(request);
-  const cookieToken = cookieValue(request, COOKIE_CSRF) || "";
-  const headerToken = request.headers["x-csrf-token"] || "";
-  return Boolean(session && cookieToken && headerToken && constantTimeEqual(cookieToken, headerToken) && constantTimeEqual(session.csrfToken, headerToken));
-}
-
-function resolveClientKey(request) {
-  const query = new URL(request.url, "http://localhost").searchParams;
-  const supplied = request.headers["x-goog-api-key"] ||
-    query.get("key") || "";
-  if (!supplied) return null;
-  return prep("SELECT id, label FROM client_keys WHERE key_hash = ?").get(hashValue(supplied)) || null;
-}
-
-function localKeyIsValid(request) {
-  return Boolean(resolveClientKey(request));
-}
-
-function clientAddress(request) {
-  if (TRUST_PROXY) {
-    const forwarded = request.headers["x-forwarded-for"];
-    if (forwarded) return String(forwarded).split(",").pop().trim() || "unknown";
-  }
-  return request.socket.remoteAddress || "unknown";
-}
-
-
-function pruneLoginAttempts() {
-  const cutoff = Date.now() - 15 * 60 * 1000;
-  for (const [address, attempts] of loginAttempts) {
-    const recent = attempts.filter((time) => time > cutoff);
-    if (recent.length) loginAttempts.set(address, recent);
-    else loginAttempts.delete(address);
-  }
-  while (loginFailures.length && loginFailures[0] <= cutoff) loginFailures.shift();
-}
-
-let globalCapLoggedAt = 0;
-function rateLimited(address) {
-  const now = Date.now();
-  const recent = (loginAttempts.get(address) || []).filter((time) => time > now - 15 * 60 * 1000);
-  loginAttempts.set(address, recent);
-  pruneLoginAttempts();
-  if (recent.length >= 10) return true;
-  if (loginFailures.length >= 1000) {
-    if (now - globalCapLoggedAt > 60_000) {
-      globalCapLoggedAt = now;
-      log("warn", "Auth", `global failure cap reached (${loginFailures.length} failures in window); rejecting logins from all addresses`);
-    }
-    return true;
-  }
-  return false;
-}
-
-function recordLoginFailure(address) {
-  const recent = loginAttempts.get(address) || [];
-  recent.push(Date.now());
-  loginAttempts.set(address, recent);
-  loginFailures.push(Date.now());
-}
+const {
+  hashValue, dashboardSessionValid, csrfValid, resolveClientKey, localKeyIsValid, clientAddress,
+  rateLimited, recordLoginFailure, clearLoginFailures, hasAdmin, passwordDigest, passwordValid,
+  createSession, destroySession, pruneExpiredSessions,
+} = createAuth({
+  prep, crypto, trustProxy: TRUST_PROXY, sessionTtlMs: SESSION_TTL_MS,
+  cookieSession: COOKIE_SESSION, cookieCsrf: COOKIE_CSRF, log,
+});
 
 const allowedLabelTables = new Set(["client_keys", "api_keys"]);
 function nextAutoLabel(table, prefix) {
@@ -132,25 +52,6 @@ function nextAutoLabel(table, prefix) {
     if (match) max = Math.max(max, Number(match[1]));
   }
   return `${prefix}${max + 1}`;
-}
-
-function hasAdmin() {
-  return Boolean(prep("SELECT id FROM admin_users LIMIT 1").get());
-}
-
-function passwordDigest(password, salt) {
-  return new Promise((resolve, reject) => {
-    crypto.scrypt(password, salt, 64, (error, derivedKey) => {
-      if (error) reject(error);
-      else resolve(derivedKey.toString("hex"));
-    });
-  });
-}
-
-async function passwordValid(password, user) {
-  const actual = Buffer.from(await passwordDigest(password, user.password_salt), "hex");
-  const expected = Buffer.from(user.password_hash, "hex");
-  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
 function createClientKey(label) {
@@ -800,18 +701,15 @@ async function handleRequest(request, response) {
       recordLoginFailure(address);
       return json(response, 401, { error: "Invalid username or password" });
     }
-    loginAttempts.delete(address);
-    const token = crypto.randomBytes(32).toString("hex");
-    const csrfToken = crypto.randomBytes(32).toString("hex");
-    sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, csrfToken });
+    clearLoginFailures(address);
+    const { token, csrfToken } = createSession();
     log("info", "Auth", `user '${username}' logged in from ${address} (session expires in ${SESSION_TTL_MS / 3600000}h)`);
     const secure = request.headers["x-forwarded-proto"] === "https" || request.socket.encrypted ? "; Secure" : "";
     response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`${COOKIE_SESSION}=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`, `${COOKIE_CSRF}=${csrfToken}; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`] }); return response.end();
   }
   if (url.pathname === "/logout" && request.method === "POST") {
     if (!csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
-    const token = cookieValue(request, COOKIE_SESSION);
-    if (token) sessions.delete(token);
+    destroySession(request);
     log("info", "Auth", `user logged out`);
     response.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`${COOKIE_SESSION}=; HttpOnly; SameSite=Strict; Max-Age=0`, `${COOKIE_CSRF}=; HttpOnly; SameSite=Strict; Max-Age=0`] });
     return response.end();
@@ -1092,11 +990,7 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 setInterval(() => {
   try {
     sweepDailyReset();
-    const now = Date.now();
-    let expired = 0;
-    for (const [token, session] of sessions) {
-      if (session.expiresAt <= now) { sessions.delete(token); expired += 1; }
-    }
+    const expired = pruneExpiredSessions();
     if (expired) dbg("Auth", `pruned ${expired} expired session(s)`);
   } catch (error) { log("error", "Usage", `sweep failed: ${error.message}`); }
 }, 60_000).unref();
