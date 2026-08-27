@@ -220,7 +220,7 @@
   }
 
   const PANEL_NAMES = ['overview', 'gemini-keys', 'client-keys', 'request-logs', 'statistics'];
-  const PANEL_SCRIPTS = new Set(['request-logs']);
+  const PANEL_SCRIPTS = new Set(['request-logs', 'statistics']);
   const panelLoads = new Map();
   const panelScriptLoads = new Map();
   let activePanel = 'overview';
@@ -302,7 +302,7 @@
   async function load() {
     const active = activePanel;
     if (active === 'request-logs') return window.loadLogs(false);
-    if (active === 'statistics') return loadUsage();
+    if (active === 'statistics') return window.loadUsage();
     try {
       const data = await api('/api/admin/state');
       window.__lastState = data;
@@ -333,14 +333,11 @@
     return '?period=' + mode;
   }
 
+  window.dashboard.usageQuery = usageQuery;
+
   function pacificNowMonth() {
     return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit' })
       .formatToParts(new Date()).reduce((acc, p) => acc + (p.type === 'year' ? p.value : p.type === 'month' ? '-' + p.value : ''), '');
-  }
-
-  function statsPeriodChanged() {
-    document.getElementById('statsMonthWrap').style.display = document.getElementById('statsPeriod').value === 'month' ? 'flex' : 'none';
-    loadUsage();
   }
 
   function keyPeriodChanged() {
