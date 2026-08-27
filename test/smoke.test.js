@@ -253,6 +253,38 @@ test("keeps the manual model refresh route available", async () => {
 });
 
 
+test("requires confirmation and deletes usage and request logs independently", async () => {
+  const authHeaders = { cookie: adminCookie, "x-csrf-token": csrfToken, "content-type": "application/json" };
+  const database = new DatabaseSync(path.join(dbDir, "test.db"));
+  database.prepare("INSERT INTO usage (created_at,model,outcome,ok,status) VALUES (?,?,?,?,?)")
+    .run(Date.now(), "delete-test", "success", 1, 200);
+  database.prepare("INSERT INTO request_logs (created_at,model,outcome) VALUES (?,?,?)")
+    .run(Date.now(), "delete-test", "success");
+  database.close();
+
+  const missingUsageConfirmation = await request(adminPort, "/api/admin/usage", {
+    method: "DELETE", headers: authHeaders, body: JSON.stringify({}),
+  });
+  assert.equal(missingUsageConfirmation.status, 400);
+
+  const deletedUsage = await request(adminPort, "/api/admin/usage", {
+    method: "DELETE", headers: authHeaders, body: JSON.stringify({ confirm: "DELETE USAGE" }),
+  });
+  assert.equal(deletedUsage.status, 200);
+  assert.ok(JSON.parse(deletedUsage.body).deleted >= 1);
+
+  const deletedLogs = await request(adminPort, "/api/admin/logs", {
+    method: "DELETE", headers: authHeaders, body: JSON.stringify({ confirm: "DELETE LOGS" }),
+  });
+  assert.equal(deletedLogs.status, 200);
+  assert.ok(JSON.parse(deletedLogs.body).deleted >= 1);
+
+  const usage = await request(adminPort, "/api/admin/usage?period=all&view=statistics", { headers: { cookie: adminCookie } });
+  assert.deepEqual(JSON.parse(usage.body).models, []);
+  const logs = await request(adminPort, "/api/admin/logs", { headers: { cookie: adminCookie } });
+  assert.equal(JSON.parse(logs.body).total, 0);
+});
+
 test("resets the administrator password with a locally logged code", async () => {
   const resetPage = await request(adminPort, "/reset-password");
   assert.equal(resetPage.status, 200);
