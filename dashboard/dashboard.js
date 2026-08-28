@@ -55,18 +55,24 @@
     scope.querySelectorAll?.('[data-copy-label]').forEach(resetCopyButton);
   }
 
+  function copyWithClipboard(value) {
+    if (!navigator.clipboard?.writeText) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(false), 500);
+      navigator.clipboard.writeText(value).then(
+        () => { clearTimeout(timeout); resolve(true); },
+        () => { clearTimeout(timeout); resolve(false); },
+      );
+    });
+  }
+
   async function copyText(value, button) {
     if (!button) return;
     const label = button.dataset.copyLabel || button.textContent;
     resetCopyButton(button);
     button.dataset.copyLabel = label;
-    let copied = false;
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(value);
-        copied = true;
-      }
-    } catch {}
+    button.textContent = 'Copying…';
+    let copied = await copyWithClipboard(value);
     if (!copied) {
       const input = document.createElement('textarea');
       input.value = value;
