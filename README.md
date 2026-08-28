@@ -151,5 +151,5 @@ The dashboard lets you:
 
 ## Repository
 
-[GitHub Repository](https://github.com/muhammad-sho/ai_studio_proxy?utm_source=chatgpt.com)
+[GitHub Repository](https://github.com/muhammad-sho/ai_studio_proxy)
 
