@@ -11,16 +11,6 @@ docker compose up -d
 
 It stores the SQLite database in `./volumes` on the host and exposes the dashboard on port `9009` and API on port `9008`.
 
-## Optional tuning
-
-The Compose file includes an empty `environment` section with two commented examples. Add or uncomment only the settings you need there, using `.env.example` as the complete reference, then restart the service:
-
-```bash
-docker compose up -d
-```
-
-Invalid values safely use the built-in default.
-
 ## Production settings
 
 - Terminate TLS at a reverse proxy.
