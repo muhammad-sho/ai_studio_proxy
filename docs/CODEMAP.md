@@ -7,7 +7,7 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | Area | Owner | Change it when |
 |---|---|---|
 | Process startup, port binding, shutdown | `server.js` | Changing how the application starts or stops |
-| Environment defaults, limits, and safe parsing | `lib/config.js` | Adding or validating an environment setting |
+| Runtime defaults, limits, and safe parsing | `lib/config.js` | Changing an internal runtime default or its validation |
 | SQLite schema, startup, statement cache | `lib/database.js` | Changing storage setup or fixed SQL ownership |
 | HTTP primitives and security headers | `lib/http.js` | Changing JSON responses, headers, body limits, aborted-body handling, or static HTTP behavior |
 | Dashboard login, password recovery, cookies, CSRF, client-key formats, rate limits | `lib/auth.js` | Changing dashboard or proxy authentication |
@@ -24,7 +24,7 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | File | Entry point | Owns |
 |---|---|---|
 | `server.js` | application bootstrap | Dependency assembly, listeners, shutdown, minute sweep |
-| `lib/config.js` | `loadConfig()` | Environment defaults, limits, and validated integer parsing |
+| `lib/config.js` | `loadConfig()` | Fixed runtime defaults, limits, and validated integer parsing |
 | `lib/database.js` | `createDatabase()` | SQLite instance, schema, prepared-statement cache |
 | `lib/http.js` | `createHttpHelpers()` | JSON output, security headers, bounded and abort-safe body reads |
 | `lib/auth.js` | `createAuth()` | Sessions, password recovery, CSRF, client-key lookup, login throttling |
@@ -41,9 +41,9 @@ Dashboard modules follow the same boundary: `dashboard/dashboard.js` owns shell,
 ## Public contract
 
 - Admin routes stay on `ADMIN_PORT`; Gemini-compatible API and upload routes stay on `API_PORT`; `/health` stays on both.
-- Published environment variables, cookie names, local-storage names, API paths, methods, and response properties stay stable.
+- The standard Compose deployment has fixed ports and a fixed `./volumes` data location. Preserve cookie names, local-storage names, API paths, methods, and response properties.
 - Every HTTP proxy request uses exactly one selected Gemini key. Native Gemini routes use `x-goog-api-key`; OpenAI-compatible routes use Bearer authentication. Do not add retries, fallback attempts, or request/response rewriting.
-- Usage stays permanently retained by default, including after keys are deleted. When explicitly configured, `USAGE_RETENTION_DAYS` may prune older usage rows. Request logs remain separately retained under their existing policy.
+- Usage stays permanently retained, including after keys are deleted. Request logs remain separately retained under their existing policy.
 - Dashboard assets and admin endpoints require a valid dashboard session. State-changing admin requests also require CSRF validation.
 
 ## Request flow
