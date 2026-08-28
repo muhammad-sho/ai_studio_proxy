@@ -11,11 +11,10 @@ docker compose up -d
 
 It stores the SQLite database in `./volumes` on the host and exposes the dashboard on port `9009` and API on port `9008`.
 
-## Production settings
+## Keep it safe
 
 - Terminate TLS at a reverse proxy.
 - Keep `./volumes` private and back it up regularly.
-- On SELinux hosts, append `:Z` to the `./volumes:/data` mount in `docker-compose.yml`.
 
 ## Verify and operate
 
