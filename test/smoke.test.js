@@ -146,6 +146,7 @@ test("sets up an administrator and serves authenticated dashboard assets", async
   assert.equal(dashboard.status, 200);
   assert.match(dashboard.body, /AI Studio Proxy/);
   assert.equal(asset.status, 200);
+  assert.match(asset.body, /sortStats/);
   assert.match(asset.headers["content-type"], /javascript/);
   assert.match(asset.headers["cache-control"], /private/);
   assert.ok(asset.headers.etag);
@@ -209,6 +210,8 @@ test("serves the complete authenticated dashboard panel set", async () => {
     assert.equal(response.status, 200);
     assert.match(response.headers["content-type"], /html/);
   }
+  assert.match(responses[4].body, /Success rate/);
+  assert.match(responses[4].body, /Latency average/);
   const controllers = await Promise.all(["request-logs", "statistics"].map((panel) =>
     request(adminPort, "/panels/" + panel + ".js", { headers: { cookie: adminCookie } })
   ));
