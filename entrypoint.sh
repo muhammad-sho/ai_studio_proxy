@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-db_path="${DB_PATH:-/data/ai-studio-proxy.db}"
+db_path="/data/ai-studio-proxy.db"
 case "$db_path" in
   /*) ;;
   *) echo "DB_PATH must be an absolute path inside the container" >&2; exit 1 ;;
