@@ -2,9 +2,6 @@ services:
   ai-studio-proxy:
     image: ghcr.io/muhammad-sho/ai-studio-proxy:latest
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
     ports:
       - "9009:9009"
       - "9008:9008"
