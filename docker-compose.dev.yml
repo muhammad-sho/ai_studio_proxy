@@ -1,4 +1,0 @@
-services:
-  ai-studio-proxy:
-    build: .
-    image: ai-studio-proxy:dev
