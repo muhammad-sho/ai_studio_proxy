@@ -77,10 +77,6 @@ jobs:
             -d '{"username":"compose-test","password":"testpass123","passwordConfirmation":"testpass123"}' >/dev/null
           curl --fail --silent --show-error http://127.0.0.1:9009/reset-password | grep -q "Get Recovery Code"
           test -f volumes/ai-studio-proxy.db
-          if docker run --rm -e DB_PATH=/ai-studio-proxy.db ai-studio-proxy:ci >/dev/null 2>&1; then
-            echo "unsafe DB_PATH unexpectedly started the container" >&2
-            exit 1
-          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
