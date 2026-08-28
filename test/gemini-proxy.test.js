@@ -43,10 +43,7 @@ function proxyFor(status, headers, body, observed = {}, options = {}) {
     REQUEST_TIMEOUT_MS: 1_000,
     MAX_RESPONSE_BYTES: 1_024,
     TRANSIENT_COOLDOWN_SECONDS: 60,
-    MODELS_CACHE_TTL_MS: 60_000,
     poolKeys: options.poolKeys || (() => []),
-    setMeta: options.setMeta || (() => {}),
-    getMeta: options.getMeta || (() => null),
     pacificDayStart: () => 0,
     resolveClientKey: () => null,
     clientAddress: () => "127.0.0.1",
@@ -129,20 +126,14 @@ test("uses Bearer authentication for OpenAI-compatible upstream routes", async (
 });
 
 
-test("forwards model discovery directly without reading or writing a response cache", async () => {
+test("forwards model discovery directly without a response cache", async () => {
   const observed = {};
-  let cacheReads = 0;
-  let cacheWrites = 0;
   const proxy = proxyFor(
     200,
     { "content-type": "application/json" },
     '{"models":[{"name":"models/gemini-live"}]}',
     observed,
-    {
-      poolKeys: () => [{ id: 7, api_key: "gemini-key" }],
-      getMeta: () => { cacheReads += 1; throw new Error("model cache must not be read"); },
-      setMeta: () => { cacheWrites += 1; },
-    },
+    { poolKeys: () => [{ id: 7, api_key: "gemini-key" }] },
   );
   const response = {
     writableEnded: false,
@@ -162,8 +153,6 @@ test("forwards model discovery directly without reading or writing a response ca
   assert.equal(observed.options.headers["x-goog-api-key"], "gemini-key");
   assert.equal(response.status, 200);
   assert.equal(response.body.toString(), '{"models":[{"name":"models/gemini-live"}]}');
-  assert.equal(cacheReads, 0);
-  assert.equal(cacheWrites, 0);
 });
 
 
