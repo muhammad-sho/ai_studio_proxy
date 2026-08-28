@@ -29,14 +29,14 @@ This repository is intentionally dependency-free. Keep Node.js built-ins, SQLite
 | `lib/http.js` | `createHttpHelpers()` | JSON output, security headers, bounded and abort-safe body reads |
 | `lib/auth.js` | `createAuth()` | Sessions, password recovery, CSRF, client-key lookup, login throttling |
 | `lib/routing.js` | route parsing exports | Path parsing, port-family gate, OpenAI route classification, usage model naming |
-| `lib/dashboard-assets.js` | `createDashboardAssets()` | Authenticated dashboard assets, gzip, ETags, and private revalidation |
+| `lib/dashboard-assets.js` | `createDashboardAssets()` | Access pages plus authenticated dashboard assets, gzip, ETags, and private revalidation |
 | `lib/usage.js` | `createUsage()` | Pacific periods, selection statistics, cooldowns, retention, masking |
 | `lib/gemini-proxy.js` | `createGeminiProxy()` | Upstream forwarding, successful-response streaming, uploads, and model refresh |
 | `lib/admin-routes.js` | `createRequestHandler()` | Setup, login, dashboard APIs, key CRUD, route dispatch |
 
 Every module is initialized once by `server.js`. Modules receive dependencies as arguments; they must not import the bootstrap file or reach into another module's private state.
 
-Dashboard modules follow the same boundary: `dashboard/dashboard.js` owns shell, authentication-aware fetches, navigation, and shared modals; a panel HTML file owns markup; its optional sibling `.js` file owns that panel's lazy controller. Keep a controller loaded only after its panel HTML is present.
+Dashboard modules follow the same boundary: `dashboard/pages/` holds setup, sign-in, and password-recovery pages; `dashboard/dashboard.js` owns shell, authentication-aware fetches, navigation, and shared modals; a panel HTML file owns markup; its optional sibling `.js` file owns that panel's lazy controller. Keep a controller loaded only after its panel HTML is present.
 
 ## Public contract
 
