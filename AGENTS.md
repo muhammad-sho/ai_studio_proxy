@@ -9,7 +9,7 @@
 
 - Zero-dependency Node.js (22+): `server.js` is the bootstrap only. Backend ownership is split under `lib/` for configuration, SQLite, HTTP, authentication, routing, dashboard assets, usage, Gemini forwarding, and request handlers; see `docs/CODEMAP.md`.
 - The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` owns navigation and shared UI; each tab has a `panels/<name>.html` partial and may have a sibling lazy controller. Only the active tab is fetched initially; visited tabs are kept in browser memory. Assets are authenticated, cached in-process, and privately revalidated with ETags. `setup.html` and `signin.html` are the two minimal auth pages, also lazy-read.
-- No `package.json`, external test framework, linter, or runtime dependencies. The built-in `node:test` suite in `test/` is required for behavior changes. Invalid numeric environment values must fall back to safe defaults rather than disabling a limit.
+- No `package.json`, external test framework, linter, or runtime dependencies. The built-in `node:test` suite in `test/` is required for behavior changes. Runtime limits have safe defaults; malformed internal configuration must not disable a limit.
 
 ## Verification
 
@@ -26,7 +26,7 @@ python3 -c "import yaml; [yaml.safe_load(open(f)) for f in ['docker-compose.yml'
 Functional testing = boot on a scratch port with a temp DB and drive the API:
 
 ```bash
-PORT=18970 DB_PATH=/tmp/x/db timeout 10 node server.js &
+ADMIN_PORT=18970 API_PORT=18971 DB_PATH=/tmp/x/db timeout 10 node server.js &
 # must run from the project directory (see gotchas)
 curl -X POST localhost:18970/api/setup -H 'Content-Type: application/json' -d '{"username":"admin","password":"testpass123","passwordConfirmation":"testpass123"}'
 ```
@@ -45,9 +45,9 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 - Every request is attempted exactly once on the best available key (least-used ready, else soonest-expiring cooldown); the upstream response is always relayed as-is. Do not reintroduce retry/fallback logic without asking.
 - The proxy is a strict HTTP pass-through: all methods and any path under v1/v1beta/v1alpha are forwarded (including SSE streaming), with only hop-by-hop/credential headers stripped and the selected key swapped. Native Gemini routes use `x-goog-api-key`; `/v*/openai/` routes use Bearer authentication. Gemini Live WebSockets are intentionally unsupported. Don't add request/response rewriting or endpoint allowlists without asking.
 - Cooldowns have exactly two cases: transient failures bench a key 60 s (`TRANSIENT_COOLDOWN_SECONDS`), daily-quota benches until Pacific midnight. Don't reintroduce other cooldown sources without asking.
-- `usage` table is the single source of truth for every request (client key, Gemini key, model, outcome, status, error code); it is kept forever, including after either key is deleted, and is read by routing only through ok=1/since-reset filters.
+- `usage` table is the single source of truth for every request (client key, Gemini key, model, outcome, status, error code); it is kept forever, including after either key is deleted, and is read by routing only through `ok=1`/since-reset filters.
 - `GET /api/admin/usage` returns its complete historical response shape by default. The dashboard may pass `view=clients`, `view=gemini`, or `view=statistics` to request only the active tab's aggregates; preserve the default response when changing this route.
-- `request_logs` holds detailed debugging payloads; app logic never reads it — only the dashboard Logs view does. Retention (minute sweep): expired cooldowns deleted immediately, request logs capped at 1,000 entries AND 7 days. `usage` rows are retained forever by default; the opt-in `USAGE_RETENTION_DAYS` setting may prune older usage rows when explicitly configured.
+- `request_logs` holds detailed debugging payloads; app logic never reads it — only the dashboard Logs view does. Retention (minute sweep): expired cooldowns are deleted immediately; request logs are capped at 1,000 entries and seven days. Usage rows are retained forever.
 - Hot-path SQL goes through `prep(sql)`, which caches compiled statements — only for **fixed** SQL strings. Never pass dynamically interpolated SQL (filters, IN-lists) to `prep()`; that leaks memory. Buffered error responses write usage, cooldown state, and request logs atomically; successful responses record usage before their stream completes and record the capped diagnostic log at stream completion.
 - Schema setup is declarative: keep `CREATE TABLE IF NOT EXISTS` definitions and avoid ad-hoc `ALTER` routines.
 - `maskSecrets()` caches key→mask pairs; invalidate via `invalidateSecretMaskCache()` wherever keys are inserted/deleted.
@@ -58,7 +58,7 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 The app is past initial testing and running for real users. Every change must be non-destructive: never break the app's availability and never lose or corrupt existing data.
 
 - Never delete, overwrite, or corrupt existing application data.
-- Preserve environment-variable names, defaults, cookie/localStorage names, API routes, and response shapes; breaking renames require explicit owner approval.
+- Preserve fixed deployment defaults, cookie/localStorage names, API routes, and response shapes; breaking changes require explicit owner approval.
 - Before pushing storage or startup changes, validate a clean Compose boot with a new `./volumes` directory and both health endpoints.
 - If a change could discard or corrupt data, stop and ask the owner first.
 
