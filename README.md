@@ -27,7 +27,7 @@ curl -fsSL -o docker-compose.yml \
 docker compose up -d
 ```
 
-The Compose file works by itself and stores data in `./volumes`. To tune defaults, copy `.env.example` to `.env`; see the [deployment guide](docs/DEPLOYMENT.md).
+The Compose file works by itself and stores data in `./volumes`.
 
 ### Docker CLI
 
@@ -153,5 +153,3 @@ The dashboard lets you:
 
 [GitHub Repository](https://github.com/muhammad-sho/ai_studio_proxy?utm_source=chatgpt.com)
 
-
-Usage history is retained forever by default. Set `USAGE_RETENTION_DAYS` in `.env` only when bounded history is desired.
