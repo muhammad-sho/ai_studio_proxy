@@ -1,9 +1,29 @@
+# Version control and CI
+.git
+.github
+
+# Local configuration and secrets
 .env
+.env.*
+*.key
+*.pem
+
+# Local database state
 *.db
 *.db-shm
 *.db-wal
-.git
-.github
+
+# Development, documentation, and Compose files
 node_modules
 npm-debug.log
+test
+docs
 *.md
+docker-compose.yml
+docker-compose.dev.yml
+.gitignore
+.dockerignore
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
