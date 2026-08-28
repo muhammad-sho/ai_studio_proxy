@@ -457,8 +457,9 @@
       document.getElementById('usageModelsTbody').innerHTML = rows.length ? rows.map(m => {
         const reasons = (failsByModel[m.model] || [])
           .map(f => `<span class="status-tag tag-off" style="margin:2px" title="${esc(f.code)}">${esc(f.code)} &times;${f.n}</span>`).join(' ') || '—';
-        return `<tr><td><strong>${esc(m.model)}</strong></td><td>${m.total}</td><td>${m.success}</td><td>${m.failed}</td><td>${reasons}</td></tr>`;
-      }).join('') : '<tr><td colspan="5" class="empty-notice">No requests recorded in this period.</td></tr>';
+        const latency = Number.isFinite(Number(m.average_latency_ms)) ? `${Math.round(Number(m.average_latency_ms))} ms` : '—';
+        return `<tr><td><strong>${esc(m.model)}</strong></td><td>${m.total}</td><td>${latency}</td><td>${m.success}</td><td>${m.failed}</td><td>${reasons}</td></tr>`;
+      }).join('') : '<tr><td colspan="6" class="empty-notice">No requests recorded in this period.</td></tr>';
     } catch (err) { console.error(err); }
   }
 
