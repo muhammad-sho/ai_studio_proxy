@@ -17,6 +17,20 @@ test("reports zero when one key handles all requests for a model", () => {
   ], keys), 0);
 });
 
+test("treats the best possible low-volume distribution as balanced", () => {
+  assert.equal(routingBalanceScore([
+    { model: "flash", key_id: 1, today: 1 },
+  ], keys), 100);
+  assert.equal(routingBalanceScore([
+    { model: "flash", key_id: 1, today: 2 },
+    { model: "flash", key_id: 2, today: 1 },
+  ], keys), 100);
+  assert.equal(routingBalanceScore([
+    { model: "flash", key_id: 1, today: 3 },
+  ], [{ id: 1 }, { id: 2 }, { id: 3 }]), 0);
+});
+
+
 test("fills unused keys with zeroes and weights models by request volume", () => {
   assert.equal(routingBalanceScore([
     { model: "balanced", key_id: 1, today: 5 },
