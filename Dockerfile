@@ -6,9 +6,6 @@ RUN apk add --no-cache su-exec \
 COPY server.js ./server.js
 COPY lib/ ./lib/
 COPY dashboard/ ./dashboard/
-COPY setup.html ./setup.html
-COPY signin.html ./signin.html
-COPY reset-password.html ./reset-password.html
 COPY --chmod=755 entrypoint.sh ./entrypoint.sh
 
 EXPOSE 9009 9008
