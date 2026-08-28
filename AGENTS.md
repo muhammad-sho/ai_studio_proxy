@@ -8,7 +8,7 @@
 ## Stack
 
 - Zero-dependency Node.js (22+): `server.js` is the bootstrap only. Backend ownership is split under `lib/` for configuration, SQLite, HTTP, authentication, routing, dashboard assets, usage, Gemini forwarding, and request handlers; see `docs/CODEMAP.md`.
-- The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` owns navigation and shared UI; each tab has a `panels/<name>.html` partial and may have a sibling lazy controller. Only the active tab is fetched initially; visited tabs are kept in browser memory. Assets are authenticated, cached in-process, and privately revalidated with ETags. `setup.html` and `signin.html` are the two minimal auth pages, also lazy-read.
+- The main UI lives in `dashboard/` (no build step): `index.html` is the shell (header, nav, modals); `dashboard.css` is shared CSS; `dashboard.js` owns navigation and shared UI; each tab has a `panels/<name>.html` partial and may have a sibling lazy controller. Only the active tab is fetched initially; visited tabs are kept in browser memory. Assets are authenticated, cached in-process, and privately revalidated with ETags. `pages/` holds the setup, sign-in, and password-recovery pages.
 - No `package.json`, external test framework, linter, or runtime dependencies. The built-in `node:test` suite in `test/` is required for behavior changes. Runtime limits have safe defaults; malformed internal configuration must not disable a limit.
 
 ## Verification
@@ -35,7 +35,7 @@ Admin POST/DELETE need CSRF: log in with `curl -c jar`, then extract the token f
 
 ## Gotchas
 
-- **cwd matters**: `server.js` reads `dashboard/`, `setup.html`, and `signin.html` relative to the working directory. Running `node server.js` from anywhere else crashes at boot. Docker sets WORKDIR /app, so only affects local runs.
+- **cwd matters**: `server.js` reads `dashboard/` relative to the working directory. Running `node server.js` from anywhere else crashes at boot. Docker sets WORKDIR /app, so only affects local runs.
 - To simulate upstream failures, append `127.0.0.1 generativelanguage.googleapis.com` to `/etc/hosts`, and remove it afterwards (verify with `rg googleapis /etc/hosts`). Node's keep-alive agent reuses sockets, so DNS tricks don't affect requests already warmed in the same process — restart the server after changing hosts. Permanent-looking 400s from "Google" during such tests mean the blackhole didn't apply.
 - Invalid Gemini API keys get a real Google `400 INVALID_ARGUMENT` (classified permanent, returned as-is). 429/5xx/transport errors trigger cooldowns; there is no retry — every request is attempted once.
 - `.gitignore` covers `*.db*` — never commit databases; use `/tmp` for test DBs.
