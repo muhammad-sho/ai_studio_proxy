@@ -345,6 +345,21 @@
       border-bottom: 1px solid var(--border);
       vertical-align: middle;
     }
+    .table-sort {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-transform: inherit;
+      letter-spacing: inherit;
+      cursor: pointer;
+    }
+    .table-sort:hover { color: var(--text); }
+    .table-sort span { font-size: 13px; line-height: 1; }
     .data-table tr:last-child td { border-bottom: none; }
     .data-table tr:hover td:first-child { box-shadow: inset 3px 0 0 0 var(--border-strong); }
     .key-row { cursor: pointer; }
