@@ -47,12 +47,12 @@ const {
   cookieSession: COOKIE_SESSION, cookieCsrf: COOKIE_CSRF, log, isOpenAiCompatibilityRoute,
 });
 const {
-  poolKeys, getMeta, pacificDayStart, pacificMonthString, laDayStartUtcOfDaysAgo,
+  poolKeys, pacificDayStart, pacificMonthString, laDayStartUtcOfDaysAgo,
   pacificMonthRange, usageStats, invalidateSecretMaskCache, maskSecrets, clipBody,
   upstreamErrorPayload, errorCodeFromPayload, recordLog, recordUsageRow, sweepDailyReset,
   setCooldownUntil, setCooldown, nextPacificReset,
 } = createUsage({ db, prep, log, maskKey, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES, USAGE_RETENTION_DAYS });
-const { handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticModelsRequest } = createGeminiProxy({
+const { handleGeminiPassthrough, handleModelsList } = createGeminiProxy({
   https, crypto, db, prep, log, dbg, maskKey, json, readBody, requestPath, statsModelName,
   REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES,
   poolKeys, pacificDayStart, resolveClientKey, clientAddress,
@@ -68,8 +68,8 @@ const { handleRequest } = createRequestHandler({
   hasAdmin, createSession, destroySession, destroyAllSessions,
   COOKIE_SESSION, COOKIE_CSRF, hashValue, invalidateSecretMaskCache,
   staticPage, sendDashboard, serveDashboardAsset,
-  handleGeminiPassthrough, handleModelsList, refreshModelsOnce, syntheticModelsRequest,
-  usageStats, routingBalanceScore, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo, getMeta,
+  handleGeminiPassthrough, handleModelsList,
+  usageStats, routingBalanceScore, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo,
 });
 
 function makeServer(family) {
