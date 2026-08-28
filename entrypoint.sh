@@ -1,24 +1,6 @@
 #!/bin/sh
 set -eu
 
-# Docker Compose stays configuration-free. Optional settings live beside the
-# persistent data in ./volumes/.env and never need to be named in Compose.
-# Explicit container environment variables always take precedence.
-if [ -r /data/.env ]; then
-  while IFS= read -r env_line || [ -n "$env_line" ]; do
-    case "$env_line" in
-      "" | \#*) continue ;;
-    esac
-    env_name=${env_line%%=*}
-    env_value=${env_line#*=}
-    case "$env_name" in
-      DB_PATH|DEBUG|TRUST_PROXY|REQUEST_TIMEOUT_MS|MAX_BODY_BYTES|MAX_RESPONSE_BYTES|LOG_BODY_MAX_BYTES|MAX_LOG_ENTRIES|USAGE_RETENTION_DAYS|CORS_ORIGIN)
-        if ! printenv "$env_name" >/dev/null; then export "$env_name=$env_value"; fi
-        ;;
-    esac
-  done < /data/.env
-fi
-
 db_path="${DB_PATH:-/data/ai-studio-proxy.db}"
 case "$db_path" in
   /*) ;;
