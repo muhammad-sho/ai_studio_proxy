@@ -20,7 +20,7 @@ find dashboard -type f -name '*.js' -print0 | xargs -0 -r -n 1 node --check
 node --test
 sh -n entrypoint.sh
 docker compose -f docker-compose.yml config --quiet
-python3 -c "import yaml; [yaml.safe_load(open(f)) for f in ['docker-compose.yml','docker-compose.dev.yml','.github/workflows/publish-ghcr.yml']]"
+python3 -c "import yaml; [yaml.safe_load(open(f)) for f in ['docker-compose.yml','.github/workflows/publish-ghcr.yml']]"
 ```
 
 Functional testing = boot on a scratch port with a temp DB and drive the API:
