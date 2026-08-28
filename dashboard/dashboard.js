@@ -479,7 +479,7 @@
       const latency = Number.isFinite(Number(m.average_latency_ms)) ? `${Math.round(Number(m.average_latency_ms))} ms` : '—';
       const total = Number(m.total) || 0;
       const successRate = total ? `${Math.round(100 * (Number(m.success) || 0) / total)}%` : '—';
-      return `<tr><td><strong>${esc(m.model)}</strong></td><td>${total}</td><td>${latency}</td><td>${successRate}</td><td>${m.failed}</td><td>${reasons}</td></tr>`;
+      return `<tr><td><strong>${esc(m.model)}</strong></td><td>${total}</td><td>${m.success}</td><td>${m.failed}</td><td>${successRate}</td><td>${latency}</td><td>${reasons}</td></tr>`;
     }).join('') : '<tr><td colspan="6" class="empty-notice">No requests recorded in this period.</td></tr>';
     for (const [key, id] of Object.entries({ requests: 'statsSortRequests', latency: 'statsSortLatency', successRate: 'statsSortSuccessRate' })) {
       const indicator = document.getElementById(id);
