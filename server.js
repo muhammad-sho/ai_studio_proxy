@@ -36,7 +36,7 @@ const { json, securityHeaders, readBody } = createHttpHelpers({
   corsOrigin: CORS_ORIGIN,
   maxBodyBytes: MAX_BODY_BYTES,
 });
-const { staticPage, sendDashboard, serveDashboardAsset } = createDashboardAssets({ fs, zlib, json });
+const { accessPage, sendDashboard, serveDashboardAsset } = createDashboardAssets({ fs, zlib, json });
 const {
   hashValue, dashboardSessionValid, csrfValid, resolveClientKey, localKeyIsValid, clientAddress,
   rateLimited, recordLoginFailure, clearLoginFailures, hasAdmin, passwordDigest, passwordValid,
@@ -67,7 +67,7 @@ const { handleRequest } = createRequestHandler({
   passwordResetCodeValid, consumePasswordResetCode, recordLoginFailure, clearLoginFailures,
   hasAdmin, createSession, destroySession, destroyAllSessions,
   COOKIE_SESSION, COOKIE_CSRF, hashValue, invalidateSecretMaskCache,
-  staticPage, sendDashboard, serveDashboardAsset,
+  accessPage, sendDashboard, serveDashboardAsset,
   handleGeminiPassthrough, handleModelsList,
   usageStats, routingBalanceScore, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo,
 });
