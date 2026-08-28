@@ -447,19 +447,63 @@
     ).join('');
   }
 
+  let statsRows = [];
+  let statsFailuresByModel = {};
+  let statsSort = { key: 'requests', direction: 'desc' };
+
+  function statsSortValue(row, key) {
+    if (key === 'requests') return Number(row.total) || 0;
+    if (key === 'latency') return Number.isFinite(Number(row.average_latency_ms)) ? Number(row.average_latency_ms) : null;
+    if (key === 'successRate') {
+      const total = Number(row.total) || 0;
+      return total ? (Number(row.success) || 0) / total : null;
+    }
+    return null;
+  }
+
+  function renderStatsRows() {
+    const target = document.getElementById('usageModelsTbody');
+    if (!target) return;
+    const sorted = [...statsRows].sort((left, right) => {
+      const a = statsSortValue(left, statsSort.key);
+      const b = statsSortValue(right, statsSort.key);
+      if (a === null && b === null) return String(left.model).localeCompare(String(right.model));
+      if (a === null) return 1;
+      if (b === null) return -1;
+      const result = typeof a === 'string' ? a.localeCompare(b) : a - b;
+      return statsSort.direction === 'asc' ? result : -result;
+    });
+    target.innerHTML = sorted.length ? sorted.map(m => {
+      const reasons = (statsFailuresByModel[m.model] || [])
+        .map(f => `<span class="status-tag tag-off" style="margin:2px" title="${esc(f.code)}">${esc(f.code)} &times;${f.n}</span>`).join(' ') || '—';
+      const latency = Number.isFinite(Number(m.average_latency_ms)) ? `${Math.round(Number(m.average_latency_ms))} ms` : '—';
+      const total = Number(m.total) || 0;
+      const successRate = total ? `${Math.round(100 * (Number(m.success) || 0) / total)}%` : '—';
+      return `<tr><td><strong>${esc(m.model)}</strong></td><td>${total}</td><td>${latency}</td><td>${successRate}</td><td>${m.failed}</td><td>${reasons}</td></tr>`;
+    }).join('') : '<tr><td colspan="6" class="empty-notice">No requests recorded in this period.</td></tr>';
+    for (const [key, id] of Object.entries({ requests: 'statsSortRequests', latency: 'statsSortLatency', successRate: 'statsSortSuccessRate' })) {
+      const indicator = document.getElementById(id);
+      if (indicator) indicator.textContent = statsSort.key === key ? (statsSort.direction === 'asc' ? '↑' : '↓') : '↕';
+    }
+  }
+
+  function sortStats(key) {
+    if (!['requests', 'latency', 'successRate'].includes(key)) return;
+    if (statsSort.key === key) statsSort.direction = statsSort.direction === 'asc' ? 'desc' : 'asc';
+    else { statsSort.key = key; statsSort.direction = 'desc'; }
+    renderStatsRows();
+  }
+
+  window.sortStats = sortStats;
+
   async function loadUsage() {
     try {
       const d = await api('/api/admin/usage' + usageQuery('statsPeriod', 'statsMonth') + '&view=statistics');
       document.getElementById('usageMeta').textContent = d.period;
-      const failsByModel = {};
-      for (const f of d.failures_model || []) (failsByModel[f.model] ||= []).push(f);
-      const rows = d.models || [];
-      document.getElementById('usageModelsTbody').innerHTML = rows.length ? rows.map(m => {
-        const reasons = (failsByModel[m.model] || [])
-          .map(f => `<span class="status-tag tag-off" style="margin:2px" title="${esc(f.code)}">${esc(f.code)} &times;${f.n}</span>`).join(' ') || '—';
-        const latency = Number.isFinite(Number(m.average_latency_ms)) ? `${Math.round(Number(m.average_latency_ms))} ms` : '—';
-        return `<tr><td><strong>${esc(m.model)}</strong></td><td>${m.total}</td><td>${latency}</td><td>${m.success}</td><td>${m.failed}</td><td>${reasons}</td></tr>`;
-      }).join('') : '<tr><td colspan="6" class="empty-notice">No requests recorded in this period.</td></tr>';
+      statsFailuresByModel = {};
+      for (const f of d.failures_model || []) (statsFailuresByModel[f.model] ||= []).push(f);
+      statsRows = d.models || [];
+      renderStatsRows();
     } catch (err) { console.error(err); }
   }
 
