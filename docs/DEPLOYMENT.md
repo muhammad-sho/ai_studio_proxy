@@ -13,20 +13,13 @@ It stores the SQLite database in `./volumes` on the host and exposes the dashboa
 
 ## Optional tuning
 
-Only create a settings file when a built-in default needs changing. Compose itself stays unchanged:
-
-```bash
-mkdir -p volumes
-curl -fsSL https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/.env.example -o volumes/.env
-```
-
-Uncomment the settings you need in `./volumes/.env`, then restart the service:
+The Compose file includes an empty `environment` section with two commented examples. Add or uncomment only the settings you need there, using `.env.example` as the complete reference, then restart the service:
 
 ```bash
 docker compose up -d
 ```
 
-The example file is the single reference for optional settings. Invalid values safely use the built-in default.
+Invalid values safely use the built-in default.
 
 ## Production settings
 
