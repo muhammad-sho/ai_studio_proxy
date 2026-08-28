@@ -177,6 +177,23 @@ test("reads authenticated proxy request bodies before upstream selection", async
   assert.match(proxied.body, /No Gemini API keys/);
 });
 
+test("records rejected model discovery without routing or usage", async () => {
+  const rejected = await request(apiPort, "/v1/models", {
+    headers: { authorization: "Bearer invalid-client-key" },
+  });
+  assert.equal(rejected.status, 401);
+  assert.match(rejected.body, /Invalid proxy API key/);
+
+  const logs = await request(adminPort, "/api/admin/logs?model=%5Bmetadata%5D&outcome=rejected", {
+    headers: { cookie: adminCookie },
+  });
+  assert.equal(logs.status, 200);
+  const entry = JSON.parse(logs.body).logs.find((row) =>
+    row.status === 401 && row.error_code === "INVALID_CLIENT_KEY"
+  );
+  assert.ok(entry, "invalid OpenAI model discovery is retained as a metadata log");
+});
+
 test("serves the complete authenticated dashboard panel set", async () => {
   const panels = ["overview", "gemini-keys", "client-keys", "request-logs", "statistics"];
   const responses = await Promise.all(panels.map((panel) =>
