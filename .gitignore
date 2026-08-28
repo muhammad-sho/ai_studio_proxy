@@ -1,3 +1,22 @@
+# Local service data
+volumes/
 *.db
 *.db-shm
 *.db-wal
+
+# Local configuration and development artifacts
+.env
+.env.*
+node_modules/
+coverage/
+*.log
+npm-debug.log
+*.tmp
+.tmp/
+tmp/
+
+# Local tooling and operating-system metadata
+.codex/
+.agents/
+.DS_Store
+Thumbs.db
