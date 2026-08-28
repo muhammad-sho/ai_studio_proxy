@@ -68,7 +68,7 @@ const { handleRequest } = createRequestHandler({
   hasAdmin, createSession, destroySession, destroyAllSessions,
   COOKIE_SESSION, COOKIE_CSRF, hashValue, invalidateSecretMaskCache,
   accessPage, sendDashboard, serveDashboardAsset,
-  handleGeminiPassthrough, handleModelsList,
+  handleGeminiPassthrough, handleModelsList, recordLog,
   usageStats, routingBalanceScore, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo,
 });
 
