@@ -266,6 +266,22 @@ test("retains historical usage when a Gemini key is deleted", async () => {
   }
 });
 
+test("reports average Google response latency for the selected period", async () => {
+  const database = new DatabaseSync(path.join(dbDir, "test.db"));
+  const insert = database.prepare("INSERT INTO usage (created_at,model,outcome,ok,status,latency_ms) VALUES (?,?,?,?,?,?)");
+  insert.run(Date.now(), "latency-test", "success", 1, 200, 120);
+  insert.run(Date.now() - 45 * 24 * 60 * 60 * 1000, "latency-test", "success", 1, 200, 900);
+  database.close();
+
+  const recent = await request(adminPort, "/api/admin/usage?period=30d&view=statistics", { headers: { cookie: adminCookie } });
+  assert.equal(recent.status, 200);
+  assert.equal(JSON.parse(recent.body).models.find((row) => row.model === "latency-test")?.average_latency_ms, 120);
+
+  const allTime = await request(adminPort, "/api/admin/usage?period=all&view=statistics", { headers: { cookie: adminCookie } });
+  assert.equal(allTime.status, 200);
+  assert.equal(JSON.parse(allTime.body).models.find((row) => row.model === "latency-test")?.average_latency_ms, 510);
+});
+
 test("requires confirmation and deletes usage and request logs independently", async () => {
   const authHeaders = { cookie: adminCookie, "x-csrf-token": csrfToken, "content-type": "application/json" };
   const database = new DatabaseSync(path.join(dbDir, "test.db"));
