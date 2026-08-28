@@ -192,6 +192,12 @@ test("records rejected model discovery without routing or usage", async () => {
     row.status === 401 && row.error_code === "INVALID_CLIENT_KEY"
   );
   assert.ok(entry, "invalid OpenAI model discovery is retained as a metadata log");
+
+  const usage = await request(adminPort, "/api/admin/usage?period=all&view=statistics", {
+    headers: { cookie: adminCookie },
+  });
+  assert.equal(usage.status, 200);
+  assert.equal(JSON.parse(usage.body).models.some((row) => row.model === "[metadata]"), false);
 });
 
 test("serves the complete authenticated dashboard panel set", async () => {
