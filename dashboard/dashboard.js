@@ -36,7 +36,30 @@
     return data;
   }
 
+  const copyResetTimers = new WeakMap();
+
+  function resetCopyButton(button) {
+    if (!button) return;
+    const timer = copyResetTimers.get(button);
+    if (timer) clearTimeout(timer);
+    copyResetTimers.delete(button);
+    if (button.dataset.copyLabel) {
+      button.textContent = button.dataset.copyLabel;
+      delete button.dataset.copyLabel;
+    }
+  }
+
+  function resetCopyButtons(scope = document) {
+    if (!scope) return;
+    if (scope.matches?.('[data-copy-label]')) resetCopyButton(scope);
+    scope.querySelectorAll?.('[data-copy-label]').forEach(resetCopyButton);
+  }
+
   async function copyText(value, button) {
+    if (!button) return;
+    const label = button.dataset.copyLabel || button.textContent;
+    resetCopyButton(button);
+    button.dataset.copyLabel = label;
     let copied = false;
     try {
       if (navigator.clipboard) {
@@ -56,9 +79,30 @@
       input.remove();
     }
     button.textContent = copied ? 'Copied!' : 'Copy failed';
+    copyResetTimers.set(button, setTimeout(() => resetCopyButton(button), 1800));
   }
 
-  window.dashboard = { api, esc, copyText };
+  function clearPanelMessages() {
+    const clientKey = document.getElementById('generatedClientKey');
+    if (clientKey) {
+      clientKey.className = 'key-alert';
+      clientKey.innerHTML = '';
+    }
+    const keyImport = document.getElementById('keyImportResult');
+    if (keyImport) {
+      keyImport.style.display = 'none';
+      keyImport.innerHTML = '';
+    }
+  }
+
+  function clearTransientUi() {
+    resetCopyButtons();
+    clearPanelMessages();
+    window.closeLogModal?.();
+    closeKeyModal();
+  }
+
+  window.dashboard = { api, esc, copyText, resetCopyButtons };
 
   function showClientKey(key) {
     const box = document.getElementById('generatedClientKey');
@@ -267,6 +311,7 @@
 
   async function activatePanel(name, tabEl, updateHash = true) {
     if (!PANEL_NAMES.includes(name)) name = 'overview';
+    if (activePanel !== name) clearTransientUi();
     activePanel = name;
     const activation = ++panelActivation;
     markActivePanel(name, tabEl, updateHash);
@@ -474,7 +519,11 @@
     } catch (err) { alert(err.message); }
   }
 
-  function closeKeyModal() { document.getElementById('keyModal').style.display = 'none'; }
+  function closeKeyModal() {
+    const modal = document.getElementById('keyModal');
+    resetCopyButtons(modal);
+    modal.style.display = 'none';
+  }
 
   document.addEventListener('click', (e) => {
     const row = e.target.closest('.key-row');
