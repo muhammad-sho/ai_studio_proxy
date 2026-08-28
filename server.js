@@ -106,7 +106,7 @@ function startServer(server, port, label) {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, "0.0.0.0", () => {
-      log("info", "Boot", `AI Studio Proxy ${label} listening on port ${port}${DEBUG ? " (debug logging enabled)" : " (set DEBUG=1 for debug logging)"}`);
+      log("info", "Boot", `AI Studio Proxy ${label} listening on port ${port}${DEBUG ? " (debug logging enabled)" : ""}`);
       resolve();
     });
   });
