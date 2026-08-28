@@ -1,7 +1,5 @@
 # Deployment guide
 
-Docker Compose 2.24 or newer is required for the optional `.env` file support.
-
 ## Start the service
 
 The Compose file works with no configuration:
@@ -15,21 +13,25 @@ It stores the SQLite database in `./volumes` on the host and exposes the dashboa
 
 ## Optional tuning
 
-Only create `.env` when a default needs changing:
+Only create a settings file when a built-in default needs changing. Compose itself stays unchanged:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/.env.example
-cp .env.example .env
+mkdir -p volumes
+curl -fsSL https://raw.githubusercontent.com/muhammad-sho/ai_studio_proxy/main/.env.example -o volumes/.env
 ```
 
-Commented settings in `.env.example` leave the app defaults unchanged. Compose ports are fixed at `9009` (dashboard) and `9008` (API). Usage history is retained forever by default; set `USAGE_RETENTION_DAYS` only when bounded history is desired.
+Uncomment the settings you need in `./volumes/.env`, then restart the service:
+
+```bash
+docker compose up -d
+```
+
+The example file is the single reference for optional settings. Invalid values safely use the built-in default.
 
 ## Production settings
 
-- Set `CORS_ORIGIN` to the exact browser origin when browser clients call the proxy directly.
-- Set `TRUST_PROXY=1` only when a trusted reverse proxy overwrites forwarded client-address headers.
 - Terminate TLS at a reverse proxy.
-- Keep `DB_PATH` as an absolute file path inside the mounted `/data` directory; the default is `/data/ai-studio-proxy.db`.
+- Keep `./volumes` private and back it up regularly.
 - On SELinux hosts, append `:Z` to the `./volumes:/data` mount in `docker-compose.yml`.
 
 ## Verify and operate
