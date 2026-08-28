@@ -1,5 +1,5 @@
 (() => {
-  const { api, esc, copyText } = window.dashboard;
+  const { api, esc, copyText, resetCopyButtons } = window.dashboard;
 
   function syncModelFilter(models) {
     const sel = document.getElementById('logModel');
@@ -88,11 +88,16 @@
   let currentLog = null;
 
   function closeLogModal() {
-    document.getElementById('logModal').style.display = 'none';
+    const modal = document.getElementById('logModal');
+    resetCopyButtons(modal);
+    modal.style.display = 'none';
+    currentLog = null;
   }
 
   async function showLogDetail(id) {
     try {
+      const modal = document.getElementById('logModal');
+      resetCopyButtons(modal);
       const l = await api('/api/admin/logs/' + id);
       currentLog = l;
       document.getElementById('logModalTitle').innerHTML = `Log #${l.id} ${resultTag(l)}`;
