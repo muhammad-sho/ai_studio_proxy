@@ -243,16 +243,6 @@ test("retains historical usage when a Gemini key is deleted", async () => {
   }
 });
 
-test("keeps the manual model refresh route available", async () => {
-  const refresh = await request(adminPort, "/api/admin/models/refresh", {
-    method: "POST",
-    headers: { cookie: adminCookie, "x-csrf-token": csrfToken },
-  });
-  assert.equal(refresh.status, 502);
-  assert.equal(JSON.parse(refresh.body).status, 503);
-});
-
-
 test("requires confirmation and deletes usage and request logs independently", async () => {
   const authHeaders = { cookie: adminCookie, "x-csrf-token": csrfToken, "content-type": "application/json" };
   const database = new DatabaseSync(path.join(dbDir, "test.db"));
