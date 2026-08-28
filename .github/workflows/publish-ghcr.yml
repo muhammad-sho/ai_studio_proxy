@@ -47,7 +47,6 @@ jobs:
           docker tag ai-studio-proxy:ci ghcr.io/muhammad-sho/ai-studio-proxy:latest
           project=ai-studio-proxy-ci
           mkdir -p volumes
-          printf 'DB_PATH=/data/compose-test.db\n' > volumes/.env
           cleanup() {
             status=$?
             if [ "$status" -ne 0 ]; then
@@ -77,7 +76,7 @@ jobs:
             -H 'content-type: application/json' \
             -d '{"username":"compose-test","password":"testpass123","passwordConfirmation":"testpass123"}' >/dev/null
           curl --fail --silent --show-error http://127.0.0.1:9009/reset-password | grep -q "Get Recovery Code"
-          test -f volumes/compose-test.db
+          test -f volumes/ai-studio-proxy.db
           if docker run --rm -e DB_PATH=/ai-studio-proxy.db ai-studio-proxy:ci >/dev/null 2>&1; then
             echo "unsafe DB_PATH unexpectedly started the container" >&2
             exit 1
