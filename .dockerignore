@@ -20,7 +20,6 @@ test
 docs
 *.md
 docker-compose.yml
-docker-compose.dev.yml
 .gitignore
 .dockerignore
 
