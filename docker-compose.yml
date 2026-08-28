@@ -2,9 +2,10 @@ services:
   ai-studio-proxy:
     image: ghcr.io/muhammad-sho/ai-studio-proxy:latest
     restart: unless-stopped
-    environment:
-      # DEBUG: "1"
-      # CORS_ORIGIN: "https://app.example.com"
+    environment: {}
+    # Add optional values here. See .env.example for every supported setting.
+    # DEBUG: "1"
+    # CORS_ORIGIN: "https://app.example.com"
     ports:
       - "9009:9009"
       - "9008:9008"
