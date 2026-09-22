@@ -54,7 +54,7 @@ const {
   pacificMonthRange, pacificDateStart, pacificDateEnd, usageStats, invalidateSecretMaskCache, maskSecrets, clipBody,
   upstreamErrorPayload, errorCodeFromPayload, recordLog, recordUsageRow, sweepDailyReset,
   setCooldownUntil, setCooldown, nextPacificReset,
-} = createUsage({ prep, log, maskKey, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES });
+} = createUsage({ prep, log, dbg, maskKey, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES });
 const { handleGeminiPassthrough, handleModelsList } = createGeminiProxy({
   https, crypto, db, prep, log, dbg, maskKey, json, readBody, requestPath, statsModelName,
   REQUEST_TIMEOUT_MS, MAX_RESPONSE_BYTES, TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES,

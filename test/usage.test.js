@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { routingBalanceScore } = require("../lib/usage");
+const { DatabaseSync } = require("node:sqlite");
+const { createUsage, routingBalanceScore } = require("../lib/usage");
 
 const keys = [{ id: 1 }, { id: 2 }];
 
@@ -43,4 +44,33 @@ test("returns no score before any multi-key traffic exists", () => {
   assert.equal(routingBalanceScore([], keys), null);
   assert.equal(routingBalanceScore([], [{ id: 1 }]), 100);
   assert.equal(routingBalanceScore([], []), null);
+});
+
+test("keeps error logs for 7 days but trims success logs after 3 days", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`
+    CREATE TABLE model_key_state (model TEXT, key_id INTEGER, cooldown_until INTEGER);
+    CREATE TABLE request_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER, model TEXT, outcome TEXT);
+  `);
+  const usage = createUsage({
+    prep: (sql) => db.prepare(sql),
+    log: () => {},
+    dbg: () => {},
+    maskKey: (key) => key,
+    LOG_BODY_MAX_BYTES: 1024,
+    MAX_LOG_ENTRIES: 1000,
+  });
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const insert = db.prepare("INSERT INTO request_logs (created_at,model,outcome) VALUES (?,?,?)");
+  insert.run(now - 4 * day, "old-success", "success");
+  insert.run(now - 2 * day, "new-success", "success");
+  insert.run(now - 5 * day, "old-failed", "failed");
+  insert.run(now - 5 * day, "old-rejected", "rejected");
+  insert.run(now - 8 * day, "aged-failed", "failed");
+  insert.run(now - 8 * day, "aged-success", "success");
+  usage.sweepDailyReset();
+  const remaining = db.prepare("SELECT model FROM request_logs ORDER BY model").all().map((row) => row.model);
+  assert.deepEqual(remaining, ["new-success", "old-failed", "old-rejected"]);
+  db.close();
 });
