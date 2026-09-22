@@ -368,7 +368,8 @@
     const isClient = active === 'client-keys';
     const query = usageQuery(
       isClient ? 'clientPeriod' : 'geminiPeriod',
-      isClient ? 'clientMonth' : 'geminiMonth'
+      isClient ? 'clientFrom' : 'geminiFrom',
+      isClient ? 'clientTo' : 'geminiTo'
     );
     try {
       const usage = await api('/api/admin/usage' + query + '&view=' + (isClient ? 'clients' : 'gemini'));
@@ -377,10 +378,15 @@
     } catch (e) { console.error(e); }
   }
 
-  function usageQuery(selId, monthId) {
+  function usageQuery(selId, dateId, toId) {
     const mode = document.getElementById(selId)?.value || '30d';
-    const month = document.getElementById(monthId)?.value || '';
-    if (mode === 'month') return '?period=30d&month=' + (month || pacificNowMonth());
+    const date = document.getElementById(dateId)?.value || '';
+    const to = toId ? document.getElementById(toId)?.value || '' : '';
+    if (mode === 'since') {
+      const query = '?period=all&from=' + (date || pacificToday());
+      return to ? query + '&to=' + to : query;
+    }
+    if (mode === 'month') return '?period=30d&month=' + (date || pacificNowMonth());
     return '?period=' + mode;
   }
 
@@ -391,7 +397,29 @@
       .formatToParts(new Date()).reduce((acc, p) => acc + (p.type === 'year' ? p.value : p.type === 'month' ? '-' + p.value : ''), '');
   }
 
+  function pacificToday() {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(new Date());
+    const values = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
   function keyPeriodChanged() {
+    for (const [selId, wrapId, fromId, toId] of [
+      ['geminiPeriod', 'geminiMonthWrap', 'geminiFrom', 'geminiTo'],
+      ['clientPeriod', 'clientMonthWrap', 'clientFrom', 'clientTo'],
+    ]) {
+      const sel = document.getElementById(selId);
+      const wrap = document.getElementById(wrapId);
+      if (!sel || !wrap) continue;
+      const specific = sel.value === 'since';
+      wrap.style.display = specific ? 'flex' : 'none';
+      if (specific) {
+        for (const input of [document.getElementById(fromId), document.getElementById(toId)]) {
+          if (input && !input.value) input.value = pacificToday();
+        }
+      }
+    }
     loadPageUsage().then(() => {
       const s = window.__lastState;
       if (s) render(s);

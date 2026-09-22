@@ -438,3 +438,109 @@ test("supports opt-in persistent sign-in with a remember-me cookie", async () =>
   assert.equal(staleDashboard.status, 200);
   assert.match(staleDashboard.body, /Forgot password/);
 });
+
+test("filters key usage by a specific from-date period", async () => {
+  const login = await request(adminPort, "/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "username=admin&password=replacement123",
+  });
+  assert.equal(login.status, 302);
+  const cookie = login.headers["set-cookie"].map((value) => value.split(";")[0]).join("; ");
+  const authHeaders = { cookie };
+
+  for (const panel of ["gemini-keys", "client-keys"]) {
+    const html = await request(adminPort, "/panels/" + panel + ".html", { headers: authHeaders });
+    assert.equal(html.status, 200);
+    assert.match(html.body, /Specific period/);
+    assert.match(html.body, /type="date"/);
+    assert.doesNotMatch(html.body, /Specific month/);
+  }
+
+  const database = new DatabaseSync(path.join(dbDir, "test.db"));
+  database.prepare("INSERT INTO usage (created_at,model,outcome,ok,status) VALUES (?,?,?,?,?)")
+    .run(Date.UTC(2026, 0, 15), "period-filter-test", "success", 1, 200);
+  database.close();
+
+  const excluded = await request(adminPort, "/api/admin/usage?period=all&from=2026-01-16&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(excluded.status, 200);
+  const excludedReport = JSON.parse(excluded.body);
+  assert.equal(excludedReport.period, "since 2026-01-16 (Pacific)");
+  assert.equal(excludedReport.models.some((row) => row.model === "period-filter-test"), false);
+
+  const included = await request(adminPort, "/api/admin/usage?period=all&from=2026-01-14&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(included.status, 200);
+  const includedReport = JSON.parse(included.body);
+  assert.equal(includedReport.period, "since 2026-01-14 (Pacific)");
+  assert.equal(includedReport.models.find((row) => row.model === "period-filter-test")?.total, 1);
+
+  const impossible = await request(adminPort, "/api/admin/usage?period=all&from=2026-02-30&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(impossible.status, 200);
+  assert.equal(JSON.parse(impossible.body).period, "all time");
+
+  const malformed = await request(adminPort, "/api/admin/usage?period=30d&from=not-a-date&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(malformed.status, 200);
+  assert.equal(JSON.parse(malformed.body).period, "last 30 days");
+});
+
+test("filters key usage by a from/to date range", async () => {
+  const login = await request(adminPort, "/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "username=admin&password=replacement123",
+  });
+  assert.equal(login.status, 302);
+  const authHeaders = { cookie: login.headers["set-cookie"].map((value) => value.split(";")[0]).join("; ") };
+
+  for (const panel of ["gemini-keys", "client-keys"]) {
+    const html = await request(adminPort, "/panels/" + panel + ".html", { headers: authHeaders });
+    assert.equal(html.status, 200);
+    assert.match(html.body, /Specific period/);
+    assert.match(html.body, /id="\w+From"/);
+    assert.match(html.body, /id="\w+To"/);
+  }
+
+  const ranged = await request(adminPort, "/api/admin/usage?period=all&from=2026-01-14&to=2026-01-16&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(ranged.status, 200);
+  const rangedReport = JSON.parse(ranged.body);
+  assert.equal(rangedReport.period, "2026-01-14 to 2026-01-16 (Pacific)");
+  assert.equal(rangedReport.models.find((row) => row.model === "period-filter-test")?.total, 1);
+
+  const sameDay = await request(adminPort, "/api/admin/usage?period=all&from=2026-01-14&to=2026-01-14&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(sameDay.status, 200);
+  assert.equal(JSON.parse(sameDay.body).models.find((row) => row.model === "period-filter-test")?.total, 1);
+
+  const toOnly = await request(adminPort, "/api/admin/usage?period=all&to=2026-01-14&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(toOnly.status, 200);
+  const toOnlyReport = JSON.parse(toOnly.body);
+  assert.equal(toOnlyReport.period, "through 2026-01-14 (Pacific)");
+  assert.equal(toOnlyReport.models.find((row) => row.model === "period-filter-test")?.total, 1);
+
+  const beforeRow = await request(adminPort, "/api/admin/usage?period=all&to=2026-01-13&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(beforeRow.status, 200);
+  assert.equal(JSON.parse(beforeRow.body).models.some((row) => row.model === "period-filter-test"), false);
+
+  const badTo = await request(adminPort, "/api/admin/usage?period=all&from=2026-01-14&to=2026-02-30&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(badTo.status, 200);
+  const badToReport = JSON.parse(badTo.body);
+  assert.equal(badToReport.period, "since 2026-01-14 (Pacific)");
+  assert.equal(badToReport.models.find((row) => row.model === "period-filter-test")?.total, 1);
+});

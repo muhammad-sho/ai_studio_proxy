@@ -51,7 +51,7 @@ const {
 });
 const {
   poolKeys, pacificDayStart, pacificMonthString, laDayStartUtcOfDaysAgo,
-  pacificMonthRange, usageStats, invalidateSecretMaskCache, maskSecrets, clipBody,
+  pacificMonthRange, pacificDateStart, pacificDateEnd, usageStats, invalidateSecretMaskCache, maskSecrets, clipBody,
   upstreamErrorPayload, errorCodeFromPayload, recordLog, recordUsageRow, sweepDailyReset,
   setCooldownUntil, setCooldown, nextPacificReset,
 } = createUsage({ prep, log, maskKey, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES });
@@ -74,7 +74,7 @@ const { handleRequest } = createRequestHandler({
   COOKIE_SESSION, COOKIE_CSRF, COOKIE_REMEMBER, hashValue, invalidateSecretMaskCache,
   accessPage, sendDashboard, serveDashboardAsset,
   handleGeminiPassthrough, handleModelsList, recordLog,
-  usageStats, routingBalanceScore, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo,
+  usageStats, routingBalanceScore, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo, pacificDateStart, pacificDateEnd,
 });
 
 function makeServer(family) {

@@ -19,13 +19,19 @@
             <option value="today">Today</option>
             <option value="7d">Last 7 days</option>
             <option value="30d" selected>Last 30 days</option>
-            <option value="month">Specific month</option>
+            <option value="since">Specific period</option>
             <option value="all">All time</option>
           </select>
         </div>
-        <div class="field-col" style="max-width:200px;display:none" id="clientMonthWrap">
-          <label class="field-label">Month</label>
-          <input type="month" id="clientMonth" class="form-input" onchange="keyPeriodChanged()">
+        <div style="max-width:380px;display:none;gap:8px" id="clientMonthWrap">
+          <div class="field-col">
+            <label class="field-label">From</label>
+            <input type="date" id="clientFrom" class="form-input" onchange="keyPeriodChanged()">
+          </div>
+          <div class="field-col">
+            <label class="field-label">To</label>
+            <input type="date" id="clientTo" class="form-input" onchange="keyPeriodChanged()">
+          </div>
         </div>
       </div>
       <p class="section-desc">Client keys are stored on the server so they can be copied again at any time. Anyone with dashboard access can retrieve them.</p>
