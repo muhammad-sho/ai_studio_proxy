@@ -377,3 +377,64 @@ test("resets the administrator password with a locally logged code", async () =>
   });
   assert.equal(newLogin.status, 302);
 });
+
+test("supports opt-in persistent sign-in with a remember-me cookie", async () => {
+  const plainLogin = await request(adminPort, "/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "username=admin&password=replacement123",
+  });
+  assert.equal(plainLogin.status, 302);
+  assert.equal(
+    plainLogin.headers["set-cookie"].some((value) => value.startsWith("ai_studio_proxy_remember=")),
+    false
+  );
+
+  const login = await request(adminPort, "/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "username=admin&password=replacement123&rememberMe=1",
+  });
+  assert.equal(login.status, 302);
+  const setCookies = login.headers["set-cookie"];
+  const rememberCookie = setCookies.map((value) => value.split(";")[0])
+    .find((pair) => pair.startsWith("ai_studio_proxy_remember="));
+  assert.ok(rememberCookie);
+  assert.match(rememberCookie, /^ai_studio_proxy_remember=[0-9a-f]{64}$/);
+  const rememberHeader = setCookies.find((value) => value.startsWith("ai_studio_proxy_remember="));
+  assert.match(rememberHeader, /HttpOnly/);
+  assert.match(rememberHeader, /SameSite=Strict/);
+  assert.match(rememberHeader, /Max-Age=2592000/);
+
+  const signinPage = await request(adminPort, "/");
+  assert.match(signinPage.body, /Remember me on this device/);
+
+  // Same browser, later visit, short session gone: the persistent cookie restores access.
+  const revived = await request(adminPort, "/", { headers: { cookie: rememberCookie } });
+  assert.equal(revived.status, 200);
+  assert.match(revived.body, /Sign Out/);
+  assert.doesNotMatch(revived.body, /Forgot password/);
+  const revivedCookies = revived.headers["set-cookie"].map((value) => value.split(";")[0]).join("; ");
+  assert.match(revivedCookies, /ai_studio_proxy_dashboard=/);
+  const revivedCsrf = /ai_studio_proxy_csrf=([^;]+)/.exec(revivedCookies)?.[1];
+  assert.ok(revivedCsrf);
+
+  const state = await request(adminPort, "/api/admin/state", { headers: { cookie: rememberCookie } });
+  assert.equal(state.status, 200);
+
+  const logout = await request(adminPort, "/logout", {
+    method: "POST",
+    headers: { cookie: `${revivedCookies}; ${rememberCookie}`, "x-csrf-token": revivedCsrf },
+  });
+  assert.equal(logout.status, 303);
+  assert.match(
+    logout.headers["set-cookie"].join("; "),
+    /ai_studio_proxy_remember=; HttpOnly; Path=\/; SameSite=Strict; Max-Age=0/
+  );
+
+  const staleState = await request(adminPort, "/api/admin/state", { headers: { cookie: rememberCookie } });
+  assert.equal(staleState.status, 401);
+  const staleDashboard = await request(adminPort, "/", { headers: { cookie: rememberCookie } });
+  assert.equal(staleDashboard.status, 200);
+  assert.match(staleDashboard.body, /Forgot password/);
+});

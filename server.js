@@ -17,10 +17,11 @@ const { createRequestHandler } = require("./lib/admin-routes");
 const {
   ADMIN_PORT, API_PORT, DB_PATH, REQUEST_TIMEOUT_MS, MAX_BODY_BYTES, MAX_RESPONSE_BYTES,
   TRANSIENT_COOLDOWN_SECONDS, LOG_BODY_MAX_BYTES, MAX_LOG_ENTRIES,
-  SESSION_TTL_MS, TRUST_PROXY, DEBUG, CORS_ORIGIN,
+  SESSION_TTL_MS, REMEMBER_ME_TTL_MS, TRUST_PROXY, DEBUG, CORS_ORIGIN,
 } = loadConfig();
 const COOKIE_SESSION = "ai_studio_proxy_dashboard";
 const COOKIE_CSRF = "ai_studio_proxy_csrf";
+const COOKIE_REMEMBER = "ai_studio_proxy_remember";
 
 function log(level, category, message) {
   const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${category}] ${message}`;
@@ -42,8 +43,10 @@ const {
   rateLimited, recordLoginFailure, clearLoginFailures, hasAdmin, passwordDigest, passwordValid,
   createPasswordResetCode, passwordResetCodeActive, storePasswordResetCode, passwordResetCodeValid,
   consumePasswordResetCode, createSession, destroySession, destroyAllSessions, pruneExpiredSessions,
+  cookieValue, rememberMeRequested, createRememberToken, rememberUserIdForToken,
+  destroyRememberToken, destroyRememberTokensForUser, pruneExpiredRememberTokens,
 } = createAuth({
-  prep, crypto, trustProxy: TRUST_PROXY, sessionTtlMs: SESSION_TTL_MS,
+  prep, crypto, trustProxy: TRUST_PROXY, sessionTtlMs: SESSION_TTL_MS, rememberMeTtlMs: REMEMBER_ME_TTL_MS,
   cookieSession: COOKIE_SESSION, cookieCsrf: COOKIE_CSRF, log, isOpenAiCompatibilityRoute,
 });
 const {
@@ -60,13 +63,15 @@ const { handleGeminiPassthrough, handleModelsList } = createGeminiProxy({
   recordUsageRow, setCooldown, setCooldownUntil, nextPacificReset, isOpenAiCompatibilityRoute, classifyRoute,
 });
 const { handleRequest } = createRequestHandler({
-  crypto, db, prep, log, dbg, maskKey, json, securityHeaders, readBody, MAX_BODY_BYTES, SESSION_TTL_MS,
+  crypto, db, prep, log, dbg, maskKey, json, securityHeaders, readBody, MAX_BODY_BYTES, SESSION_TTL_MS, REMEMBER_ME_TTL_MS,
   parseApiRoute, parseUploadRoute,
   dashboardSessionValid, csrfValid, localKeyIsValid, clientAddress, rateLimited,
   passwordDigest, passwordValid, createPasswordResetCode, passwordResetCodeActive, storePasswordResetCode,
   passwordResetCodeValid, consumePasswordResetCode, recordLoginFailure, clearLoginFailures,
   hasAdmin, createSession, destroySession, destroyAllSessions,
-  COOKIE_SESSION, COOKIE_CSRF, hashValue, invalidateSecretMaskCache,
+  cookieValue, rememberMeRequested, createRememberToken, rememberUserIdForToken,
+  destroyRememberToken, destroyRememberTokensForUser,
+  COOKIE_SESSION, COOKIE_CSRF, COOKIE_REMEMBER, hashValue, invalidateSecretMaskCache,
   accessPage, sendDashboard, serveDashboardAsset,
   handleGeminiPassthrough, handleModelsList, recordLog,
   usageStats, routingBalanceScore, pacificDayStart, pacificMonthRange, pacificMonthString, laDayStartUtcOfDaysAgo,
@@ -145,6 +150,8 @@ setInterval(() => {
     sweepDailyReset();
     const expired = pruneExpiredSessions();
     if (expired) dbg("Auth", `pruned ${expired} expired session(s)`);
+    const expiredRemember = pruneExpiredRememberTokens();
+    if (expiredRemember) dbg("Auth", `pruned ${expiredRemember} expired remember-me token(s)`);
   } catch (error) { log("error", "Usage", `sweep failed: ${error.message}`); }
 }, 60_000).unref();
 
