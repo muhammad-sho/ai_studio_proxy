@@ -391,6 +391,7 @@
   }
 
   window.dashboard.usageQuery = usageQuery;
+  window.dashboard.pacificToday = pacificToday;
 
   function pacificNowMonth() {
     return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit' })
@@ -526,7 +527,7 @@
 
   async function loadUsage() {
     try {
-      const d = await api('/api/admin/usage' + usageQuery('statsPeriod', 'statsMonth') + '&view=statistics');
+      const d = await api('/api/admin/usage' + usageQuery('statsPeriod', 'statsFrom', 'statsTo') + '&view=statistics');
       document.getElementById('usageMeta').textContent = d.period;
       statsFailuresByModel = {};
       for (const f of d.failures_model || []) (statsFailuresByModel[f.model] ||= []).push(f);

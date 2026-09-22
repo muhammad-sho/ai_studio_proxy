@@ -544,3 +544,30 @@ test("filters key usage by a from/to date range", async () => {
   assert.equal(badToReport.period, "since 2026-01-14 (Pacific)");
   assert.equal(badToReport.models.find((row) => row.model === "period-filter-test")?.total, 1);
 });
+
+test("filters statistics by a specific from/to period", async () => {
+  const login = await request(adminPort, "/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "username=admin&password=replacement123",
+  });
+  assert.equal(login.status, 302);
+  const authHeaders = { cookie: login.headers["set-cookie"].map((value) => value.split(";")[0]).join("; ") };
+
+  const html = await request(adminPort, "/panels/statistics.html", { headers: authHeaders });
+  assert.equal(html.status, 200);
+  assert.match(html.body, /Specific period/);
+  assert.match(html.body, /id="statsFrom"/);
+  assert.match(html.body, /id="statsTo"/);
+  assert.doesNotMatch(html.body, /Specific month/);
+  assert.match(html.body, /Success rate/);
+  assert.match(html.body, /Latency average/);
+
+  const ranged = await request(adminPort, "/api/admin/usage?period=all&from=2026-01-14&to=2026-01-16&view=statistics", {
+    headers: authHeaders,
+  });
+  assert.equal(ranged.status, 200);
+  const report = JSON.parse(ranged.body);
+  assert.equal(report.period, "2026-01-14 to 2026-01-16 (Pacific)");
+  assert.equal(report.models.find((row) => row.model === "period-filter-test")?.total, 1);
+});

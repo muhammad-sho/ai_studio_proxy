@@ -2,7 +2,14 @@
   const { api, esc, usageQuery } = window.dashboard;
 
   function statsPeriodChanged() {
-    document.getElementById('statsMonthWrap').style.display = document.getElementById('statsPeriod').value === 'month' ? 'flex' : 'none';
+    const specific = document.getElementById('statsPeriod').value === 'since';
+    document.getElementById('statsMonthWrap').style.display = specific ? 'flex' : 'none';
+    if (specific) {
+      for (const id of ['statsFrom', 'statsTo']) {
+        const input = document.getElementById(id);
+        if (input && !input.value) input.value = window.dashboard.pacificToday();
+      }
+    }
     loadUsage();
   }
 
