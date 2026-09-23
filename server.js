@@ -103,10 +103,15 @@ function makeServer(family) {
     log("error", "Boot", `cannot start server on ${family === "admin" ? `admin port ${ADMIN_PORT}` : `api port ${API_PORT}`}: ${error.message}`);
     process.exit(1);
   });
+  server.on("connection", (socket) => {
+    openSockets.add(socket);
+    socket.on("close", () => openSockets.delete(socket));
+  });
   return server;
 }
 
 const servers = [];
+const openSockets = new Set();
 function startServer(server, port, label) {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -134,13 +139,19 @@ function shutdown(signal) {
   shuttingDown = true;
   log("info", "Shutdown", `${signal} received; closing server`);
   let remaining = servers.length;
-  const finish = () => { try { db.close(); } catch {} process.exit(0); };
+  let finished = false;
+  const finish = () => { if (finished) return; finished = true; try { db.close(); } catch {} process.exit(0); };
   if (!remaining) return finish();
   for (const server of servers) server.close(() => { if (--remaining === 0) finish(); });
-  setTimeout(() => process.exit(0), 3000).unref();
+  setTimeout(() => {
+    for (const socket of openSockets) { try { socket.destroy(); } catch {} }
+    finish();
+  }, 3000).unref();
 }
 process.on("unhandledRejection", (reason) => {
   log("error", "Process", `unhandled rejection: ${reason && reason.stack ? reason.stack : reason}`);
+  try { db.close(); } catch {}
+  process.exit(1);
 });
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
